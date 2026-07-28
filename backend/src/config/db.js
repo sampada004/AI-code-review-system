@@ -1,12 +1,44 @@
 const mysql = require("mysql2/promise");
-require("dotenv").config();
+const path = require("path");
+const fs = require("fs");
+const dotenv = require("dotenv");
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+// Load .env file next to the backend folder (robust to different CWDs)
+const envPath = path.resolve(__dirname, "../../.env");
+let fileEnv = {};
+if (fs.existsSync(envPath)) {
+  try {
+    fileEnv = dotenv.parse(fs.readFileSync(envPath));
+  } catch (err) {
+    // ignore parse errors; we'll rely on process.env
+  }
+}
+
+const getEnv = (key) => {
+  const val = process.env[key];
+  // treat undefined or empty string as missing and fall back to file env
+  if (val === undefined || val === "") {
+    return fileEnv[key];
+  }
+  return val;
+};
+
+const resolvedConfig = {
+  host: getEnv("DB_HOST"),
+  port: getEnv("DB_PORT") ? Number(getEnv("DB_PORT")) : undefined,
+  user: getEnv("DB_USER"),
+  password: getEnv("DB_PASSWORD"),
+  database: getEnv("DB_NAME"),
+};
+
+// Mask password for logs
+const safeLogConfig = Object.assign({}, resolvedConfig, {
+  password: resolvedConfig.password ? "<redacted>" : undefined,
 });
+
+console.log("[db] resolved DB config:", safeLogConfig);
+
+const pool = mysql.createPool(resolvedConfig);
+console.log("[db] created mysql pool");
 
 module.exports = pool;

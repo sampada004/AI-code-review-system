@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import { apiUrl } from "@/lib/api";
 
 const highlights = [
   "Smart AI code reviews on every pull request",
@@ -41,9 +42,7 @@ const RegisterPage = () => {
     };
 
     try {
-      const response = await fetch(
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/auth/register",
-        {
+      const response = await fetch(apiUrl("/auth/register"), {
           method: "POST",
           credentials: "include",
           headers: {

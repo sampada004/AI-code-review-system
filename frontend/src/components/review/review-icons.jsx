@@ -57,3 +57,12 @@ export function SparkIcon({ className }) {
   );
 }
 
+export function RefreshIcon({ className }) {
+  return (
+    <IconShell className={className}>
+      <path d="M21 12a9 9 0 10-3 6.7" />
+      <path d="M21 12v6h-6" />
+    </IconShell>
+  );
+}
+

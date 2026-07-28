@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { ReviewWorkspace } from "@/components/review/review-workspace";
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 };
 
 export default function ReviewsPage() {
-  return <ReviewWorkspace />;
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-[#000000] text-slate-400">Loading workspace...</div>}>
+      <ReviewWorkspace />
+    </Suspense>
+  );
 }

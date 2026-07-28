@@ -2,6 +2,26 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const userModel = require("../models/userModel");
 
+// Ensure JWT_SECRET is loaded even if dotenv wasn't applied earlier
+if (!process.env.JWT_SECRET) {
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const dotenv = require("dotenv");
+    const envPath = path.resolve(__dirname, "../../.env");
+    if (fs.existsSync(envPath)) {
+      const parsed = dotenv.parse(fs.readFileSync(envPath));
+      if (parsed && parsed.JWT_SECRET) {
+        process.env.JWT_SECRET = parsed.JWT_SECRET;
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+}
+
+console.log('[auth] JWT secret present at module load?', !!process.env.JWT_SECRET);
+
 const tokenConfig = () => ({
   secret: process.env.JWT_SECRET,
   expiresIn: "7d",
@@ -10,8 +30,12 @@ const tokenConfig = () => ({
 const createToken = (user) => {
   const { secret, expiresIn } = tokenConfig();
 
+  // diagnostic: log presence of JWT secret (do not print the secret value)
   if (!secret) {
+    console.log('[auth] JWT secret missing at token creation');
     throw new Error("JWT secret is not configured");
+  } else {
+    console.log('[auth] JWT secret present at token creation');
   }
 
   return jwt.sign(
@@ -41,7 +65,7 @@ async function registerUser({ full_name, email, password }) {
     throw error;
   }
 
-  const hashedPassword = await bcrypt.hash(password, 12);
+  const hashedPassword = await bcrypt.hash(password, 10);
   const user = await userModel.create({
     fullName: full_name.trim(),
     email: normalizedEmail,

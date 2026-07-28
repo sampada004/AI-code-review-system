@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import { apiUrl } from "@/lib/api";
 
 const highlights = [
   "AI review suggestions in under 90 seconds",
@@ -31,9 +32,7 @@ function LoginPageContent() {
     };
 
     try {
-      const response = await fetch(
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/auth/login",
-        {
+      const response = await fetch(apiUrl("/auth/login"), {
           method: "POST",
           credentials: "include",
           headers: {
@@ -47,6 +46,15 @@ function LoginPageContent() {
 
       if (!response.ok) {
         throw new Error(data.message || "Login failed");
+      }
+
+      // persist token for client-side API calls (backend also sets httpOnly cookie)
+      try {
+        if (typeof window !== "undefined" && data?.token) {
+          window.localStorage.setItem("auth_token", data.token);
+        }
+      } catch {
+        // ignore storage errors
       }
 
       setMessage("Login successful. Redirecting...");

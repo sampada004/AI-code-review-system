@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { ReviewFileExplorer } from "./review-file-explorer";
 
-export function RepositoryExplorerDrawer({ open, onClose }) {
+export function RepositoryExplorerDrawer({ open, onClose, onFileSelect, onRefresh }) {
   useEffect(() => {
     if (!open) {
       return undefined;
@@ -35,8 +35,8 @@ export function RepositoryExplorerDrawer({ open, onClose }) {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="h-full p-3">
-          <ReviewFileExplorer />
+          <div className="h-full p-3">
+          <ReviewFileExplorer onFileSelect={onFileSelect} onRefresh={onRefresh} />
         </div>
       </div>
     </div>

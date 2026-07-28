@@ -1,7 +1,11 @@
 const express = require("express");
 const cors = require("cors");
-require("dotenv").config();
+const path = require("path");
+// load backend/.env (one level above src)
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 const authRoutes = require("./routes/authRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const repositoryRoutes = require("./routes/repositoryRoutes");
 
 const app = express();
 const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
@@ -15,6 +19,8 @@ app.use(
 );
 app.use(express.json());
 
+// express middleware
+
 // Health Check Route
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -24,7 +30,10 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-
+console.log("Mounting review routes...");
+app.use("/api/reviews", reviewRoutes);
+console.log("Mounting repository routes...");
+app.use("/api/repositories", repositoryRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
