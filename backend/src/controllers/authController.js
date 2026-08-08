@@ -1,7 +1,7 @@
 const authService = require("../services/authService");
 const userModel = require("../models/userModel");
 
-const sendAuthResponse = (res, statusCode, message, data) => {
+const sendSuccessResponse = (res, statusCode, message, data) => {
   res.status(statusCode).json({
     success: true,
     message,
@@ -21,7 +21,7 @@ async function register(req, res, next) {
   try {
     const user = await authService.registerUser(req.body);
 
-    sendAuthResponse(res, 201, "Registration successful", {
+    sendSuccessResponse(res, 201, "Registration successful", {
       user,
     });
   } catch (error) {
@@ -34,7 +34,7 @@ async function login(req, res, next) {
     const { token, user } = await authService.loginUser(req.body);
 
     res.cookie("auth_token", token, getAuthCookieOptions());
-    sendAuthResponse(res, 200, "Login successful", {
+    sendSuccessResponse(res, 200, "Login successful", {
       token,
       user,
     });
@@ -54,7 +54,7 @@ async function me(req, res, next) {
       });
     }
 
-    sendAuthResponse(res, 200, "Profile loaded", {
+    sendSuccessResponse(res, 200, "Profile loaded", {
       user,
     });
   } catch (error) {
@@ -64,17 +64,9 @@ async function me(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    res.clearCookie("auth_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-    });
+    res.clearCookie("auth_token", getAuthCookieOptions());
 
-    res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
+    sendSuccessResponse(res, 200, "Logged out successfully");
   } catch (error) {
     next(error);
   }
