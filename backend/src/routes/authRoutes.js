@@ -9,4 +9,7 @@ router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 router.get("/me", authMiddleware, authController.me);
 
+router.get("/github/login", authController.githubLogin);
+router.get("/github/callback", authController.githubCallback);
+
 module.exports = router;

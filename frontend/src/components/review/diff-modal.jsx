@@ -3,12 +3,17 @@
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 import { X, Code2 } from "lucide-react";
+import { SparkIcon } from "./review-icons";
 
 export default function DiffModal({
   isOpen,
   onClose,
   originalCode,
   modifiedCode,
+  issue,
+  recommendation,
+  severity,
+  onApply,
   language = "javascript",
   title = "AI Suggested Fix",
 }) {
@@ -18,9 +23,23 @@ export default function DiffModal({
   useEffect(() => {
     if (!isOpen || !editorHostRef.current) return;
 
+    // Define a custom, subtle theme for the diff editor so it's less "heavy" with colors
+    monaco.editor.defineTheme('subtle-diff-theme', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'diffEditor.insertedTextBackground': '#10b98125', // subtle emerald
+        'diffEditor.removedTextBackground': '#f43f5e25', // subtle rose
+        'diffEditor.insertedLineBackground': '#10b98110',
+        'diffEditor.removedLineBackground': '#f43f5e10',
+        'editor.background': '#0d1016',
+      }
+    });
+
     // Create the diff editor
     diffEditorRef.current = monaco.editor.createDiffEditor(editorHostRef.current, {
-      theme: "vs-dark",
+      theme: "subtle-diff-theme",
       readOnly: true,
       renderSideBySide: true,
       minimap: { enabled: false },
@@ -114,19 +133,51 @@ export default function DiffModal({
           </div>
         </div>
 
+        {/* Explanation Panel for Junior Developers */}
+        {(issue || recommendation) && (
+          <div className="bg-[#11151c] border-b border-white/10 px-5 py-4 shrink-0">
+            <h4 className="text-[13px] font-semibold text-slate-200 mb-2 flex items-center gap-2">
+              <SparkIcon className="h-4 w-4 text-sky-400" />
+              Developer Explanation
+            </h4>
+            <div className="space-y-2">
+              {issue && (
+                <p className="text-[13px] leading-relaxed text-slate-300">
+                  <span className="text-rose-400 font-medium mr-1">Issue:</span> 
+                  {issue}
+                </p>
+              )}
+              {recommendation && (
+                <p className="text-[13px] leading-relaxed text-slate-300">
+                  <span className="text-emerald-400 font-medium mr-1">Recommendation:</span> 
+                  {recommendation}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Diff Editor Container */}
         <div className="flex-1 relative bg-[#0d1016]">
           <div ref={editorHostRef} className="absolute inset-0" />
         </div>
         
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-white/10 bg-[#161b22] flex justify-end">
+        <div className="px-5 py-3 border-t border-white/10 bg-[#161b22] flex justify-end gap-3">
           <button
             onClick={onClose}
             className="px-4 py-2 text-[13px] font-medium text-slate-200 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md transition-colors"
           >
-            Close
+            Cancel
           </button>
+          {onApply && (
+            <button
+              onClick={onApply}
+              className="px-4 py-2 text-[13px] font-medium text-white bg-sky-500 hover:bg-sky-400 border border-sky-400/20 rounded-md transition-colors shadow-sm"
+            >
+              Apply Fix
+            </button>
+          )}
         </div>
         
       </div>

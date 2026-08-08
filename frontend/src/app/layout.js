@@ -27,10 +27,17 @@ export default function RootLayout({ children }) {
         <Script id="suppress-monaco-errors" strategy="afterInteractive">
           {`
             window.addEventListener('unhandledrejection', function(event) {
-              if (event.reason && event.reason.message && event.reason.message.includes('Missing requestHandler')) {
+              const msg = event.reason && event.reason.message;
+              const name = event.reason && event.reason.name;
+              if (
+                (msg && msg.includes('Missing requestHandler')) ||
+                name === 'Canceled' ||
+                event.reason === 'Canceled'
+              ) {
                 event.preventDefault();
+                event.stopImmediatePropagation();
               }
-            });
+            }, { capture: true });
           `}
         </Script>
         {children}

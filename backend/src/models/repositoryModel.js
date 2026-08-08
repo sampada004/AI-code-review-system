@@ -9,6 +9,7 @@ const mapRepo = (row) => {
     repository_name: row.repository_name,
     repository_url: row.repository_url,
     default_branch: row.default_branch,
+    project_context: typeof row.project_context === 'string' ? JSON.parse(row.project_context) : row.project_context,
     created_at: row.created_at,
   };
 };
@@ -24,7 +25,7 @@ async function create({ userId, repositoryName, repositoryUrl, defaultBranch }) 
 
 async function findById(id) {
   const [rows] = await pool.execute(
-    `SELECT id, user_id, repository_name, repository_url, default_branch, created_at FROM repositories WHERE id = ? LIMIT 1`,
+    `SELECT id, user_id, repository_name, repository_url, default_branch, project_context, created_at FROM repositories WHERE id = ? LIMIT 1`,
     [id]
   );
 
@@ -33,16 +34,26 @@ async function findById(id) {
 
 async function findByUser(userId) {
   const [rows] = await pool.execute(
-    `SELECT id, user_id, repository_name, repository_url, default_branch, created_at FROM repositories WHERE user_id = ? ORDER BY created_at DESC`,
+    `SELECT id, user_id, repository_name, repository_url, default_branch, project_context, created_at FROM repositories WHERE user_id = ? ORDER BY created_at DESC`,
     [userId]
   );
 
   return rows.map(mapRepo);
 }
 
+async function updateProjectContext(id, projectContext) {
+  const contextString = projectContext ? JSON.stringify(projectContext) : null;
+  await pool.execute(
+    `UPDATE repositories SET project_context = ? WHERE id = ?`,
+    [contextString, id]
+  );
+  return findById(id);
+}
+
 module.exports = {
   create,
   findById,
   findByUser,
+  updateProjectContext,
 };
       

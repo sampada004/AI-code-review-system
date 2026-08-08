@@ -122,6 +122,7 @@ const RegisterPage = () => {
 
             <button
               type="button"
+              onClick={() => { window.location.href = apiUrl("/auth/github/login"); }}
               className="flex h-9.5 w-full items-center justify-center gap-2 rounded-xl border border-slate-600/70 bg-slate-800/85 text-[13px] font-semibold text-slate-100 transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-500 hover:bg-slate-700/85"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

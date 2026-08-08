@@ -43,6 +43,46 @@ function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
+function calculateSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const tokenize = (s) => s.toLowerCase().match(/\w+/g) || [];
+  const tokens1 = new Set(tokenize(str1));
+  const tokens2 = new Set(tokenize(str2));
+  let intersection = 0;
+  tokens1.forEach(t => { if (tokens2.has(t)) intersection++; });
+  const union = tokens1.size + tokens2.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function getLanguageFromFilename(name) {
+  if (!name) return "plaintext";
+  const ext = name.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "js":
+    case "jsx":
+      return "javascript";
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "java":
+      return "java";
+    case "py":
+      return "python";
+    case "cpp":
+    case "cc":
+    case "cxx":
+      return "cpp";
+    case "c":
+      return "c";
+    case "cs":
+      return "csharp";
+    case "php":
+      return "php";
+    default:
+      return "plaintext";
+  }
+}
+
 export function ReviewWorkspace() {
   const workspaceRef = useRef(null);
   const dragStateRef = useRef({ startX: 0, startWidth: DEFAULT_EDITOR_WIDTH });
@@ -57,6 +97,15 @@ export function ReviewWorkspace() {
   const [findings, setFindings] = useState([]);
   const [analysisSummary, setAnalysisSummary] = useState("");
   const [overallSeverity, setOverallSeverity] = useState("none");
+  const [selectedFindingIndex, setSelectedFindingIndex] = useState(null);
+  const [appliedFixes, setAppliedFixes] = useState(new Set());
+  const editorRef = useRef(null);
+
+  // Re-validation state
+  const [originalReview, setOriginalReview] = useState(null);
+  const [validationReport, setValidationReport] = useState(null);
+  const [isRevalidating, setIsRevalidating] = useState(false);
+  const [isCreatingPR, setIsCreatingPR] = useState(false);
   
   // Repository State
   const searchParams = useSearchParams();
@@ -80,6 +129,8 @@ export function ReviewWorkspace() {
   const [fetchError, setFetchError] = useState(null);
   const [repoTree, setRepoTree] = useState([]);
   const [repoFiles, setRepoFiles] = useState({});
+  const [projectContext, setProjectContext] = useState(null);
+  const [isDetectingContext, setIsDetectingContext] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [selectedFileContent, setSelectedFileContent] = useState("");
   const [fixesWidth, setFixesWidth] = useState(FIXES_EXPANDED_WIDTH);
@@ -239,10 +290,47 @@ export function ReviewWorkspace() {
     if (!repoId) {
       setRepoTree([]);
       setRepoFiles({});
+      setProjectContext(null);
       setSelectedFileName("");
       setSelectedFileContent("");
       return;
     }
+
+    // Fetch Repository Details to get Context
+    let token = null;
+    try {
+      token = window.localStorage.getItem("auth_token");
+    } catch (e) {}
+
+    fetch(apiUrl(`/repositories/${repoId}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(res => res.json())
+      .then(data => {
+        if (!mounted) return;
+        if (data.success && data.repository) {
+          if (data.repository.project_context) {
+            setProjectContext(data.repository.project_context);
+          } else {
+            // Trigger automatic detection
+            setIsDetectingContext(true);
+            fetch(apiUrl(`/repositories/${repoId}/detect-context`), {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({ branch: repoBranch })
+            })
+              .then(res => res.json())
+              .then(detectData => {
+                if (mounted && detectData.success) {
+                  setProjectContext(detectData.context);
+                }
+              })
+              .finally(() => mounted && setIsDetectingContext(false));
+          }
+        }
+      })
+      .catch(console.error);
 
     setIsFetchingWorkspace(true);
     setFetchError(null);
@@ -258,12 +346,16 @@ export function ReviewWorkspace() {
           const firstFile = paths[0];
           setSelectedFileName(firstFile);
           
-          const githubMeta = getGithubMeta(repoUrl);
-          if (githubMeta) {
-            setSelectedFileContent("// Fetching file contents from GitHub...\n");
-            const rawUrl = `https://raw.githubusercontent.com/${githubMeta.owner}/${githubMeta.repo}/${repoBranch || 'main'}/${firstFile}`;
-            fetch(rawUrl)
-              .then(res => res.ok ? res.text() : Promise.reject(new Error("Failed to fetch")))
+          if (repoId) {
+            setSelectedFileContent("// Fetching file contents from workspace...\n");
+            let token = null;
+            try {
+              token = window.localStorage.getItem("auth_token");
+            } catch (e) {}
+
+            const rawUrl = apiUrl(`/repositories/${repoId}/file?path=${encodeURIComponent(firstFile)}&branch=${encodeURIComponent(repoBranch || 'main')}`);
+            fetch(rawUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+              .then(res => res.ok ? res.text() : Promise.reject(new Error(`Failed to fetch (${res.status})`)))
               .then(text => {
                 if (!mounted) return;
                 setRepoFiles(prev => ({ ...prev, [firstFile]: text }));
@@ -271,7 +363,7 @@ export function ReviewWorkspace() {
               })
               .catch(e => {
                 if (!mounted) return;
-                setSelectedFileContent(`// Error fetching file: ${e.message}\n\n${data.files[firstFile]}`);
+                setSelectedFileContent(`// Error fetching file: ${e.message}\n\n${data.files[firstFile] || ""}`);
               });
           } else {
             setSelectedFileContent(data.files[firstFile]);
@@ -300,6 +392,10 @@ export function ReviewWorkspace() {
     setFindings([]);
     setAnalysisSummary("");
     setOverallSeverity("none");
+    setSelectedFindingIndex(null);
+    setAppliedFixes(new Set());
+    setOriginalReview(null);
+    setValidationReport(null);
     
     const existingContent = repoFiles[name];
     if (existingContent && !existingContent.startsWith("/* \n * File:")) {
@@ -307,18 +403,22 @@ export function ReviewWorkspace() {
       return;
     }
 
-    const githubMeta = getGithubMeta(repoUrl);
-    if (!githubMeta) {
+    if (!repoId) {
       setSelectedFileContent(existingContent || "");
       return;
     }
 
-    setSelectedFileContent("// Fetching file contents from GitHub...\n");
+    setSelectedFileContent("// Fetching file contents from workspace...\n");
 
     try {
-      const rawUrl = `https://raw.githubusercontent.com/${githubMeta.owner}/${githubMeta.repo}/${repoBranch || 'main'}/${name}`;
-      const res = await fetch(rawUrl);
-      if (!res.ok) throw new Error("Failed to fetch");
+      let token = null;
+      try {
+        token = window.localStorage.getItem("auth_token");
+      } catch (e) {}
+
+      const rawUrl = apiUrl(`/repositories/${repoId}/file?path=${encodeURIComponent(name)}&branch=${encodeURIComponent(repoBranch || 'main')}`);
+      const res = await fetch(rawUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error(`Failed to fetch (${res.status})`);
       const text = await res.text();
       
       setRepoFiles((prev) => ({ ...prev, [name]: text }));
@@ -332,6 +432,18 @@ export function ReviewWorkspace() {
     // Re-fetch logic if needed
     setSelectedFileContent((prev) => prev);
   }
+
+  const handleIgnoreFix = (idx) => {
+    setFindings((prev) => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], ignored: true };
+      return next;
+    });
+
+    if (selectedFindingIndex === idx) {
+      setSelectedFindingIndex(null);
+    }
+  };
 
   const editorStyle = useMemo(() => {
     return {
@@ -354,10 +466,11 @@ export function ReviewWorkspace() {
     };
   };
 
-  const handleAnalyze = async ({ sourceCode, language } = {}) => {
+  const handleAnalyze = async ({ sourceCode, language, isRevalidation = false } = {}) => {
     // begin analysis / submit review
     setStatusMessage("");
     setAnalysisState("analyzing");
+    if (isRevalidation) setIsRevalidating(true);
     // ensure panel is hidden during analysis
     setIsFixesCollapsed(true);
 
@@ -366,6 +479,8 @@ export function ReviewWorkspace() {
       fileName: selectedFileName || "unknown",
       repositoryId: repoId || null,
       language: language || "plaintext",
+      isRevalidation,
+      previousFindings: isRevalidation && originalReview ? originalReview.findings : undefined
     };
 
     if (!payload.sourceCode) {
@@ -403,19 +518,128 @@ export function ReviewWorkspace() {
 
       // success
       const { analysis } = data;
-      setFindings(analysis?.findings || []);
+      const newFindings = analysis?.findings || [];
+      
+      if (isRevalidation && originalReview) {
+        // Compare new findings with original findings
+        const resolved = [];
+        const remaining = [];
+        const newIssues = [];
+        
+        // Find remaining and resolved
+        originalReview.findings.forEach(orig => {
+          // If ignored, treat as resolved for validation purposes
+          if (orig.ignored) {
+            resolved.push(orig);
+            return;
+          }
+          
+          const match = newFindings.find(nf => {
+            const str1 = orig.issue + " " + (orig.recommendation || "");
+            const str2 = nf.issue + " " + (nf.recommendation || "");
+            return calculateSimilarity(str1, str2) > 0.25;
+          });
+          if (match) {
+            remaining.push(match);
+          } else {
+            resolved.push(orig);
+          }
+        });
+        
+        // Find new issues
+        newFindings.forEach(nf => {
+          const match = originalReview.findings.find(orig => {
+            const str1 = orig.issue + " " + (orig.recommendation || "");
+            const str2 = nf.issue + " " + (nf.recommendation || "");
+            return calculateSimilarity(str1, str2) > 0.25;
+          });
+          if (!match) {
+            newIssues.push(nf);
+          }
+        });
+        
+        let status = "all_resolved";
+        if (newIssues.length > 0) status = "new_issues";
+        else if (remaining.length > 0) status = "partial";
+        
+        setValidationReport({
+          status,
+          resolved,
+          remaining,
+          newIssues,
+          severityBefore: originalReview.overallSeverity,
+          severityAfter: analysis?.overallSeverity || "none"
+        });
+      } else {
+        // First time analysis
+        setOriginalReview({
+          findings: newFindings,
+          summary: analysis?.summary || "",
+          overallSeverity: analysis?.overallSeverity || "none"
+        });
+        setValidationReport(null);
+      }
+
+      setFindings(newFindings);
       setAnalysisSummary(analysis?.summary || "Analysis completed.");
       setOverallSeverity(analysis?.overallSeverity || "none");
+      setSelectedFindingIndex(null);
+      setAppliedFixes(new Set());
       
-      setStatusMessage("Review completed successfully");
+      setStatusMessage(isRevalidation ? "Re-validation completed" : "Review completed successfully");
       setAnalysisState("completed");
+      if (isRevalidation) setIsRevalidating(false);
       // show AI Suggested Fixes panel when done
       setIsFixesCollapsed(false);
     } catch (err) {
       setStatusMessage(err?.message || "Network error");
       setAnalysisState("error");
+      setIsRevalidating(false);
     }
   };
+
+  const handleRevalidate = () => {
+    let source = "";
+    if (editorRef.current) {
+      source = editorRef.current.getValue();
+    }
+    const language = getLanguageFromFilename(selectedFileName);
+    handleAnalyze({ sourceCode: source, language, isRevalidation: true });
+  };
+
+  const handleCreatePullRequest = async () => {
+    if (!repoId || !selectedFileName || !editorRef.current) return;
+    
+    setIsCreatingPR(true);
+    try {
+      let token = window.localStorage.getItem("auth_token");
+      
+      const response = await fetch(apiUrl(`/repositories/${repoId}/pull-request`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          filePath: selectedFileName,
+          newContent: editorRef.current.getValue(),
+          branch: repoBranch
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to create Pull Request");
+      }
+
+      alert(`Pull Request created successfully!\\n\\nURL: ${data.pullRequest.prUrl}\\nBranch: ${data.pullRequest.branchName}`);
+    } catch (err) {
+      alert("Error creating Pull Request: " + err.message);
+    } finally {
+      setIsCreatingPR(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-[#000000] text-slate-100">
@@ -456,6 +680,27 @@ export function ReviewWorkspace() {
                 onFileSelect={handleFileSelect} 
                 onRefresh={handleRefreshFiles} 
                 activeFile={selectedFileName} 
+                projectContext={projectContext}
+                isDetectingContext={isDetectingContext}
+                onRefreshContext={() => {
+                  setIsDetectingContext(true);
+                  let token = window.localStorage.getItem("auth_token");
+                  fetch(apiUrl(`/repositories/${repoId}/detect-context`), {
+                    method: 'POST',
+                    headers: { 
+                      'Content-Type': 'application/json',
+                      ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ branch: repoBranch })
+                  })
+                    .then(res => res.json())
+                    .then(detectData => {
+                      if (detectData.success) {
+                        setProjectContext(detectData.context);
+                      }
+                    })
+                    .finally(() => setIsDetectingContext(false));
+                }}
               />
               <div
                 className="absolute inset-y-0 right-[-4px] z-10 w-2 cursor-col-resize hover:bg-sky-500/50"
@@ -495,6 +740,7 @@ export function ReviewWorkspace() {
                   <div className="flex flex-1 min-h-[calc(100vh-180px)] gap-4 flex-col xl:flex-row">
                     <div className="relative min-w-0 min-h-0 transition-[flex-basis,width] duration-300 ease-out" style={editorStyle}>
                       <EditorPlaceholder
+                        ref={editorRef}
                         analysisState={analysisState}
                         onAnalyze={handleAnalyze}
                         layoutTrigger={layoutTick}
@@ -504,6 +750,9 @@ export function ReviewWorkspace() {
                         repoName={repoName}
                         repoBranch={repoBranch}
                         onRefreshFiles={handleRefreshFiles}
+                        findings={findings}
+                        selectedFindingIndex={selectedFindingIndex}
+                        onSelectFinding={setSelectedFindingIndex}
                       />
                     </div>
                   {analysisState === "completed" && !isFixesCollapsed ? (
@@ -519,6 +768,28 @@ export function ReviewWorkspace() {
                       findings={findings}
                       summary={analysisSummary}
                       overallSeverity={overallSeverity}
+                      selectedFindingIndex={selectedFindingIndex}
+                      onSelectFinding={setSelectedFindingIndex}
+                      appliedFixes={appliedFixes}
+                      onApplyFix={(idx) => {
+                        editorRef.current?.applyFix(idx);
+                        setAppliedFixes(prev => new Set(prev).add(idx));
+                      }}
+                      onUndoFix={(idx) => {
+                        editorRef.current?.undoFix(idx);
+                        setAppliedFixes(prev => {
+                          const next = new Set(prev);
+                          next.delete(idx);
+                          return next;
+                        });
+                      }}
+                      onIgnoreFix={handleIgnoreFix}
+                      onRevalidate={handleRevalidate}
+                      isRevalidating={isRevalidating}
+                      validationReport={validationReport}
+                      originalReview={originalReview}
+                      onCreatePullRequest={handleCreatePullRequest}
+                      isCreatingPR={isCreatingPR}
                     />
                     </div>
                   ) : null}

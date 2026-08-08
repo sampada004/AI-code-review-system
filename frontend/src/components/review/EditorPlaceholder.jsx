@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as monaco from "monaco-editor";
+import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
+import Editor from "@monaco-editor/react";
 
 const editorValue = `// Paste your source code here to begin analysis...
 `;
 
-export function EditorPlaceholder({
+export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   analysisState = "idle",
   onAnalyze,
   layoutTrigger,
@@ -16,104 +16,212 @@ export function EditorPlaceholder({
   repoName = "",
   repoBranch = "",
   onRefreshFiles,
-} = {}) {
-  const editorHostRef = useRef(null);
+  findings = [],
+  selectedFindingIndex = null,
+  onSelectFinding,
+}, ref) {
   const editorInstanceRef = useRef(null);
-  const monacoRef = useRef(null);
-  const [isEditorReady, setIsEditorReady] = useState(false);
+  const monacoInstanceRef = useRef(null);
+  const decorationsCollectionRef = useRef(null);
+  const findingsRef = useRef(findings);
+  const mouseDownListenerRef = useRef(null);
   const [fileName, setFileName] = useState("gateway.js");
-  const fileInputRef = useRef(null);
+  
+  // Keep a ref of findings for the editor click handler to access latest state
+  useEffect(() => {
+    findingsRef.current = findings;
+  }, [findings]);
 
   useEffect(() => {
-    let isMounted = true;
+    if (propFileName) setFileName(propFileName);
+  }, [propFileName]);
 
-    async function initializeEditor() {
-      if (!editorHostRef.current) {
-        return;
-      }
-
-      if (!isMounted || !editorHostRef.current) {
-        return;
-      }
-
-      const lang = getLanguageFromFilename(propFileName);
-      const uri = monaco.Uri.parse('inmemory://workspace-editor');
+  useImperativeHandle(ref, () => ({
+    getValue: () => {
+      const editor = editorInstanceRef.current;
+      return editor ? editor.getValue() : "";
+    },
+    applyFix: (idx) => {
+      const editor = editorInstanceRef.current;
+      if (!editor || !decorationsCollectionRef.current) return;
+      const ranges = decorationsCollectionRef.current.getRanges();
+      const currentRange = ranges[idx];
+      const finding = findingsRef.current[idx];
       
-      let model = monaco.editor.getModel(uri);
-      if (!model) {
-        model = monaco.editor.createModel(propFileContent || editorValue, lang, uri);
-      } else {
-        model.setValue(propFileContent || editorValue);
-        monaco.editor.setModelLanguage(model, lang);
+      if (currentRange && finding && finding.fixedCode) {
+        let targetRange = currentRange;
+        const model = editor.getModel();
+        
+        // Attempt to find the exact snippet in the code to ensure we replace the right text
+        if (model && finding.originalCodeSnippet) {
+          // Normalize line endings to try and get a match
+          const searchStr = finding.originalCodeSnippet;
+          const matches = model.findMatches(searchStr, false, false, false, null, false);
+          if (matches && matches.length > 0) {
+            targetRange = matches[0].range;
+          }
+        }
+
+        const cleanText = finding.fixedCode.replace(/[\r\n]+$/, '');
+        editor.executeEdits("ai-fix", [{
+          range: targetRange,
+          text: cleanText
+        }]);
       }
+    },
+    undoFix: (idx) => {
+      const editor = editorInstanceRef.current;
+      if (!editor || !decorationsCollectionRef.current) return;
+      const ranges = decorationsCollectionRef.current.getRanges();
+      const currentRange = ranges[idx];
+      const finding = findingsRef.current[idx];
+      
+      if (currentRange && finding && finding.originalCodeSnippet !== undefined) {
+        let targetRange = currentRange;
+        const model = editor.getModel();
+        
+        // When undoing, we need to find the fixedCode we just inserted to replace it back
+        if (model && finding.fixedCode) {
+          const searchStr = finding.fixedCode.replace(/[\r\n]+$/, '');
+          const matches = model.findMatches(searchStr, false, false, false, null, false);
+          if (matches && matches.length > 0) {
+            targetRange = matches[0].range;
+          }
+        }
 
-      editorInstanceRef.current = monaco.editor.create(editorHostRef.current, {
-        model: model,
-        language: "javascript",
-        theme: "vs-dark",
-        automaticLayout: true,
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        smoothScrolling: true,
-        fontSize: 13,
-        lineHeight: 20,
-        wordWrap: "on",
-        padding: { top: 16, bottom: 16 },
-        renderLineHighlight: "none",
-        overviewRulerLanes: 0,
-        glyphMargin: false,
-        folding: false,
-        inlayHints: { enabled: "off" },
-        colorDecorators: false,
-        hover: { enabled: false },
-        lineNumbersMinChars: 3,
-        renderIndentGuides: true,
-        scrollBar: {
-          verticalScrollbarSize: 8,
-          horizontalScrollbarSize: 8,
-        },
-      });
+        const cleanText = (finding.originalCodeSnippet || "").replace(/[\r\n]+$/, '');
+        editor.executeEdits("ai-undo", [{
+          range: targetRange,
+          text: cleanText
+        }]);
+      }
+    }
+  }));
 
-      setIsEditorReady(true);
+  const handleEditorDidMount = (editor, monaco) => {
+    editorInstanceRef.current = editor;
+    monacoInstanceRef.current = monaco;
+
+    // Attach click listener for bidirectional sync
+    mouseDownListenerRef.current = editor.onMouseDown((e) => {
+      if (e.target.position) {
+        const clickedLine = e.target.position.lineNumber;
+        const currentFindings = findingsRef.current;
+        const findingIndex = currentFindings.findIndex(f => f.lineNumber === clickedLine);
+        if (findingIndex !== -1 && onSelectFinding) {
+          onSelectFinding(findingIndex);
+        }
+      }
+    });
+  };
+
+  // Sync findings to editor decorations
+  useEffect(() => {
+    const editor = editorInstanceRef.current;
+    const monaco = monacoInstanceRef.current;
+    if (!editor || !monaco) return;
+
+    if (!findings || findings.length === 0) {
+      if (decorationsCollectionRef.current) {
+        decorationsCollectionRef.current.clear();
+      }
+      return;
     }
 
-    initializeEditor();
+    const existingRanges = decorationsCollectionRef.current ? decorationsCollectionRef.current.getRanges() : [];
 
+    const newDecorations = findings.map((finding, idx) => {
+      if (finding.ignored) {
+        return { range: new monaco.Range(1, 1, 1, 1), options: {} };
+      }
+
+      let range;
+      if (existingRanges[idx] && existingRanges[idx].startLineNumber > 0) {
+        // Preserve dynamically tracked line positions
+        range = existingRanges[idx];
+      } else {
+        const line = finding.lineNumber || finding.line_number || 1;
+        const snippet = finding.originalCodeSnippet || finding.original_code_snippet || "";
+        const snippetLines = snippet ? snippet.split(/\r\n|\r|\n/).length : 1;
+        const endLine = Math.max(line, line + snippetLines - 1);
+        const model = editor.getModel();
+        const endColumn = model ? model.getLineMaxColumn(endLine) : 1;
+        range = new monaco.Range(line, 1, endLine, endColumn);
+      }
+      
+      const severity = (finding.severity || "low").toLowerCase();
+      
+      let highlightClass = "monaco-highlight-low";
+      let gutterClass = "monaco-gutter-low";
+      let overviewRulerColor = "rgba(234, 179, 8, 0.8)"; // yellow
+
+      if (severity === "high") {
+        highlightClass = "monaco-highlight-high";
+        gutterClass = "monaco-gutter-high";
+        overviewRulerColor = "rgba(239, 68, 68, 0.8)"; // red
+      } else if (severity === "medium") {
+        highlightClass = "monaco-highlight-medium";
+        gutterClass = "monaco-gutter-medium";
+        overviewRulerColor = "rgba(249, 115, 22, 0.8)"; // orange
+      }
+
+      return {
+        range,
+        options: {
+          isWholeLine: true,
+          stickiness: monaco.editor.TrackedRangeStickiness.AlwaysGrowsWhenTypingAtEdges,
+          className: highlightClass,
+          hoverMessage: [
+            { value: `**Severity:** ${finding.severity}` },
+            { value: `**Issue:** ${finding.issue}` },
+            { value: `**Recommendation:** ${finding.recommendation}` },
+          ],
+          overviewRuler: {
+            color: overviewRulerColor,
+            position: monaco.editor.OverviewRulerLane.Right,
+          },
+        },
+      };
+    });
+
+    if (decorationsCollectionRef.current) {
+      decorationsCollectionRef.current.set(newDecorations);
+    } else {
+      decorationsCollectionRef.current = editor.createDecorationsCollection(newDecorations);
+    }
+  }, [findings]);
+
+  // Sync selectedFindingIndex to editor scroll position
+  useEffect(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor || selectedFindingIndex === null) return;
+
+    const finding = findings[selectedFindingIndex];
+    if (finding) {
+      const line = finding.lineNumber || finding.line_number;
+      if (line) {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.focus();
+      }
+    }
+  }, [selectedFindingIndex, findings]);
+
+  // Clean up listener on unmount
+  useEffect(() => {
     return () => {
-      isMounted = false;
-      // Dispose the editor instance to clean up DOM elements, but do NOT dispose the model
-      if (editorInstanceRef.current) {
-        editorInstanceRef.current.dispose();
-        editorInstanceRef.current = null;
+      if (mouseDownListenerRef.current) {
+        mouseDownListenerRef.current.dispose();
       }
     };
   }, []);
-
-  // update editor when parent selects a file
-  useEffect(() => {
-    if (!editorInstanceRef.current) return;
-    if (propFileContent != null) {
-      try {
-        editorInstanceRef.current.setValue(propFileContent);
-        setFileName(propFileName || "file.js");
-
-        const lang = getLanguageFromFilename(propFileName || "");
-        const model = editorInstanceRef.current.getModel();
-        if (model) {
-          monaco.editor.setModelLanguage(model, lang);
-        }
-      } catch (err) {
-        // ignore
-      }
-    }
-  }, [propFileContent, propFileName]);
 
   function getLanguageFromFilename(name) {
     const ext = name.split(".").pop()?.toLowerCase();
     switch (ext) {
       case "js":
       case "jsx":
-        return ext === "jsx" ? "javascript" : "javascript";
+        return "javascript";
       case "ts":
       case "tsx":
         return "typescript";
@@ -136,46 +244,17 @@ export function EditorPlaceholder({
     }
   }
 
-  const handleFileChoose = (event) => {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-
-    setFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target.result;
-      if (editorInstanceRef.current) {
-        editorInstanceRef.current.setValue(text);
-
-        // set language based on filename and ensure contribution is loaded
-        try {
-          const lang = getLanguageFromFilename(file.name);
-          const model = editorInstanceRef.current.getModel();
-          if (model) {
-            monaco.editor.setModelLanguage(model, lang);
-          }
-        } catch (err) {
-          // ignore language switch errors
-        }
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const triggerFileSelect = () => fileInputRef.current?.click();
-
-  useEffect(() => {
-    if (typeof layoutTrigger === "undefined") return;
-    // request Monaco to relayout when parent layout changes (sidebar toggle)
-    if (editorInstanceRef.current && typeof editorInstanceRef.current.layout === "function") {
-      try {
-        editorInstanceRef.current.layout();
-      } catch (err) {
-        // ignore
-      }
+  const handleAnalyzeClick = () => {
+    let source = "";
+    if (editorInstanceRef.current) {
+      source = editorInstanceRef.current.getValue();
     }
-  }, [layoutTrigger]);
+    if (!source && fileContent) {
+      source = fileContent;
+    }
+    const language = getLanguageFromFilename(fileName);
+    if (onAnalyze) onAnalyze({ sourceCode: source, language });
+  };
 
   return (
     <section className="flex h-full min-h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[2px] border border-[#3a404b] bg-[#11151c] shadow-[0_16px_44px_rgba(0,0,0,0.35)]">
@@ -187,31 +266,10 @@ export function EditorPlaceholder({
           </div>
           <div className="ml-4 text-[13px] font-medium text-slate-300">{fileName}</div>
         </div>
-        <div className="flex items-center gap-3">          <button
+        <div className="flex items-center gap-3">
+          <button
             type="button"
-            onClick={() => {
-              if (!editorInstanceRef.current) return;
-              let source = "";
-              try {
-                source = editorInstanceRef.current.getValue();
-              } catch (e) {
-                source = "";
-              }
-
-              let language = getLanguageFromFilename(fileName);
-              try {
-                const model = editorInstanceRef.current.getModel();
-                if (model && monacoRef.current) {
-                  // Monaco model may expose a language id
-                  const id = model.getLanguageId ? model.getLanguageId() : null;
-                  if (id) language = id;
-                }
-              } catch (e) {
-                // fallback to filename-based language
-              }
-
-              if (onAnalyze) onAnalyze({ sourceCode: source, language });
-            }}
+            onClick={handleAnalyzeClick}
             disabled={analysisState === "analyzing"}
             className="ml-2 rounded-[4px] border border-white/10 bg-sky-600 px-2 py-1 text-[12px] font-medium text-white transition disabled:opacity-60 disabled:cursor-not-allowed hover:bg-sky-500"
           >
@@ -233,18 +291,37 @@ export function EditorPlaceholder({
       </div>
 
       <div className="relative flex flex-1 min-h-0 bg-[#0d1015]">
-        <div ref={editorHostRef} className="absolute inset-0 h-full w-full" aria-label="Code editor" />
-
-        {!isEditorReady ? (
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:24px_24px] opacity-35" />
-        ) : null}
-
-        {!isEditorReady ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[12px] text-slate-500">
-            Loading editor...
-          </div>
-        ) : null}
+        <Editor
+          height="100%"
+          language={getLanguageFromFilename(fileName)}
+          theme="vs-dark"
+          value={propFileContent !== null ? propFileContent : editorValue}
+          onMount={handleEditorDidMount}
+          loading={<div className="flex items-center justify-center h-full text-[12px] text-slate-500">Loading editor...</div>}
+          options={{
+            automaticLayout: true,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            smoothScrolling: true,
+            fontSize: 13,
+            lineHeight: 20,
+            wordWrap: "on",
+            padding: { top: 16, bottom: 16 },
+            renderLineHighlight: "none",
+            glyphMargin: false,
+            folding: false,
+            inlayHints: { enabled: "off" },
+            colorDecorators: false,
+            hover: { enabled: true },
+            lineNumbersMinChars: 3,
+            renderIndentGuides: true,
+            scrollbar: {
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+            },
+          }}
+        />
       </div>
     </section>
   );
-}
+});

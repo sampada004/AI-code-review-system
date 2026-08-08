@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { SparkIcon } from "./review-icons";
 import dynamic from "next/dynamic";
 
@@ -17,9 +17,23 @@ const severityTone = {
   none: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
 };
 
-function FixCard({ fix }) {
+function FixCard({ fix, isSelected, onClick, isApplied, onUndo, onIgnore }) {
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    if (isSelected && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [isSelected]);
+
   return (
-    <article className="rounded-[2px] border border-[#3a404b] bg-[#171b24] p-4 shadow-[0_10px_28px_rgba(0,0,0,0.22)]">
+    <article 
+      ref={cardRef}
+      onClick={onClick}
+      className={`rounded-[2px] border bg-[#171b24] p-4 shadow-[0_10px_28px_rgba(0,0,0,0.22)] cursor-pointer transition-all duration-200 ${
+        isSelected ? "border-sky-500/50 ring-1 ring-sky-500/50" : "border-[#3a404b] hover:border-[#4a5260]"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div
@@ -44,26 +58,45 @@ function FixCard({ fix }) {
           <span className="text-sky-400 font-medium">Recommendation:</span>{" "}
           {fix.recommendation}
         </p>
+        {fix.suggestedFix && (
+          <p className="mt-2 text-[12px] leading-relaxed text-slate-400 border-t border-white/5 pt-2">
+            <span className="text-emerald-400 font-medium">Suggested Fix:</span>{" "}
+            {fix.suggestedFix}
+          </p>
+        )}
       </div>
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-        {fix.suggestedFix ? (
-          <button
-            type="button"
-            onClick={() => fix.onViewFix && fix.onViewFix()}
-            className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-400 transition hover:bg-emerald-500/15"
-          >
-            View Fix
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-[12px] font-medium text-sky-100 transition hover:bg-sky-500/15"
-          >
-            Apply Fix
-          </button>
+        {fix.fixedCode && (
+          isApplied ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onUndo) onUndo();
+              }}
+              className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[12px] font-medium text-amber-400 transition hover:bg-amber-500/15"
+            >
+              Undo Fix
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (fix.onViewFix) fix.onViewFix();
+              }}
+              className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-[12px] font-medium text-emerald-400 transition hover:bg-emerald-500/15"
+            >
+              View Fix
+            </button>
+          )
         )}
         <button
           type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onIgnore) onIgnore();
+          }}
           className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-white/10 bg-white/5 px-3 py-2 text-[12px] font-medium text-slate-200 transition hover:bg-white/10"
         >
           Ignore
@@ -80,10 +113,23 @@ export function ReviewFixesPanel({
   summary = "",
   overallSeverity = "none",
   isHistoryMode = false,
+  selectedFindingIndex = null,
+  onSelectFinding,
+  appliedFixes = new Set(),
+  onApplyFix,
+  onUndoFix,
+  onIgnoreFix,
+  onRevalidate,
+  isRevalidating = false,
+  validationReport = null,
+  originalReview = null,
+  onCreatePullRequest,
+  isCreatingPR = false,
 }) {
   const [selectedDiffData, setSelectedDiffData] = useState(null);
   const hasRun = !!summary || isHistoryMode || findings.length > 0;
-  const hasFindings = findings.length > 0;
+  const activeFindings = findings.filter(f => !f.ignored);
+  const hasFindings = activeFindings.length > 0;
   return (
     <aside
       className={`flex h-full min-h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[2px] border border-[#3a404b] bg-[#141821] shadow-[0_16px_44px_rgba(0,0,0,0.35)] transition-[width] duration-300 ease-out ${
@@ -157,27 +203,80 @@ export function ReviewFixesPanel({
             </div>
           )}
 
+          {validationReport && (
+            <div className="px-4 py-4 border-b border-white/5 bg-white/[0.02]">
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-3 flex items-center justify-between">
+                <span>Validation Report</span>
+                {validationReport.status === "all_resolved" && (
+                  <span className="flex items-center gap-1 text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3"/> All Fixed</span>
+                )}
+                {validationReport.status === "partial" && (
+                  <span className="flex items-center gap-1 text-amber-400 normal-case tracking-normal"><AlertTriangle className="w-3 h-3"/> Partial</span>
+                )}
+                {validationReport.status === "new_issues" && (
+                  <span className="flex items-center gap-1 text-rose-400 normal-case tracking-normal"><AlertTriangle className="w-3 h-3"/> New Issues</span>
+                )}
+              </h4>
+              <div className="grid grid-cols-3 gap-2 text-center text-[12px] mb-3">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded p-2 text-emerald-300">
+                  <div className="font-bold text-[14px]">{validationReport.resolved.length}</div>
+                  <div className="opacity-80">Resolved</div>
+                </div>
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded p-2 text-amber-300">
+                  <div className="font-bold text-[14px]">{validationReport.remaining.length}</div>
+                  <div className="opacity-80">Remaining</div>
+                </div>
+                <div className="bg-rose-500/10 border border-rose-500/20 rounded p-2 text-rose-300">
+                  <div className="font-bold text-[14px]">{validationReport.newIssues.length}</div>
+                  <div className="opacity-80">New</div>
+                </div>
+              </div>
+              <div className="text-[12px] text-slate-400 flex items-center justify-between">
+                <span>Severity Shift:</span>
+                <span className="font-medium">
+                  {validationReport.severityBefore} <span className="opacity-50 mx-1">→</span> {validationReport.severityAfter}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className={`px-3 py-4 ${!hasFindings ? "flex-1 flex flex-col justify-center min-h-[300px]" : "space-y-3"}`}>
             {findings.length > 0 ? (
-              findings.map((finding, idx) => (
-                <FixCard
-                  key={idx}
-                  fix={{
-                    title: finding.lineNumber
-                      ? `Line ${finding.lineNumber}`
-                      : "General Issue",
-                    severity: finding.severity || "low",
-                    issue: finding.issue,
-                    recommendation: finding.recommendation,
-                    originalCodeSnippet: finding.original_code_snippet || finding.originalCodeSnippet,
-                    suggestedFix: finding.suggested_fix || finding.suggestedFix,
-                    onViewFix: () => setSelectedDiffData({
-                      originalCode: finding.original_code_snippet || finding.originalCodeSnippet,
-                      modifiedCode: finding.suggested_fix || finding.suggestedFix,
-                    })
-                  }}
-                />
-              ))
+              findings.map((finding, idx) => {
+                if (finding.ignored) return null;
+                return (
+                  <FixCard
+                    key={idx}
+                    isSelected={selectedFindingIndex === idx}
+                    onClick={() => onSelectFinding && onSelectFinding(idx)}
+                    fix={{
+                      title: finding.lineNumber
+                        ? `Line ${finding.lineNumber}`
+                        : "General Issue",
+                      severity: finding.severity || "low",
+                      issue: finding.issue,
+                      recommendation: finding.recommendation,
+                      originalCodeSnippet: finding.original_code_snippet || finding.originalCodeSnippet,
+                      suggestedFix: finding.suggested_fix || finding.suggestedFix,
+                      fixedCode: finding.fixed_code || finding.fixedCode,
+                      onViewFix: () => {
+                        if (onSelectFinding) onSelectFinding(idx);
+                        setSelectedDiffData({
+                          idx,
+                          originalCode: finding.original_code_snippet || finding.originalCodeSnippet,
+                          modifiedCode: finding.fixed_code || finding.fixedCode,
+                          issue: finding.issue,
+                          recommendation: finding.recommendation,
+                          severity: finding.severity,
+                        });
+                      }
+                    }}
+                    isApplied={appliedFixes.has(idx)}
+                    onUndo={() => onUndoFix && onUndoFix(idx)}
+                    onIgnore={() => onIgnoreFix && onIgnoreFix(idx)}
+                  />
+                );
+              })
             ) : summary || isHistoryMode ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-emerald-500/10 text-emerald-400 mb-4">
@@ -209,9 +308,60 @@ export function ReviewFixesPanel({
         </div>
       )}
 
-      {!collapsed && findings.length > 0 ? (
-        <div className="border-t border-white/8 px-4 py-3 text-[11px] text-slate-400">
-          Apply fixes individually or finalize after review.
+      {!collapsed && (findings.length > 0 || validationReport) ? (
+        <div className="border-t border-white/8 px-4 py-3 flex flex-col gap-2">
+          {appliedFixes.size > 0 && (
+            <button
+              type="button"
+              onClick={onRevalidate}
+              disabled={isRevalidating}
+              className="w-full flex items-center justify-center gap-2 rounded-[4px] bg-sky-600 px-3 py-2 text-[13px] font-medium text-white transition hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRevalidating ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
+                  </svg>
+                  Re-validating...
+                </>
+              ) : (
+                <>Revalidate Fixes</>
+              )}
+            </button>
+          )}
+          {validationReport && (
+            <div className="relative group mt-1">
+              <button
+                type="button"
+                onClick={onCreatePullRequest}
+                disabled={validationReport.status !== "all_resolved" || isCreatingPR}
+                className="w-full flex items-center justify-center gap-2 rounded-[4px] bg-emerald-600 px-3 py-2 text-[13px] font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingPR ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
+                    </svg>
+                    Creating PR...
+                  </>
+                ) : (
+                  <>Create Pull Request</>
+                )}
+              </button>
+              {validationReport.status !== "all_resolved" && (
+                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-48 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 z-50">
+                  <div className="rounded border border-[#3a404b] bg-[#141821] px-3 py-2 text-center text-[11px] text-slate-300 shadow-xl">
+                    Resolve all issues before opening a Pull Request.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="text-[11px] text-slate-400 text-center">
+            {validationReport ? "Merge validated fixes directly to GitHub." : appliedFixes.size > 0 ? "Revalidate fixes to ensure they didn't introduce new issues." : "Apply fixes individually or finalize after review."}
+          </div>
         </div>
       ) : null}
 
@@ -220,6 +370,15 @@ export function ReviewFixesPanel({
         onClose={() => setSelectedDiffData(null)}
         originalCode={selectedDiffData?.originalCode}
         modifiedCode={selectedDiffData?.modifiedCode}
+        issue={selectedDiffData?.issue}
+        recommendation={selectedDiffData?.recommendation}
+        severity={selectedDiffData?.severity}
+        onApply={() => {
+          if (onApplyFix && selectedDiffData?.idx !== undefined) {
+            onApplyFix(selectedDiffData.idx);
+          }
+          setSelectedDiffData(null);
+        }}
       />
     </aside>
   );

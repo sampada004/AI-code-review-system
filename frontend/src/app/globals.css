@@ -40,3 +40,26 @@ body {
   @apply border border-white/12 bg-white/5 backdrop-blur-xl;
 }
 
+/* Monaco AI Issue Highlighting */
+.monaco-highlight-high {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+.monaco-gutter-high {
+  border-left: 3px solid rgba(239, 68, 68, 0.8) !important;
+  margin-left: 5px;
+}
+.monaco-highlight-medium {
+  background-color: rgba(249, 115, 22, 0.15) !important;
+}
+.monaco-gutter-medium {
+  border-left: 3px solid rgba(249, 115, 22, 0.8) !important;
+  margin-left: 5px;
+}
+.monaco-highlight-low {
+  background-color: rgba(234, 179, 8, 0.15) !important;
+}
+.monaco-gutter-low {
+  border-left: 3px solid rgba(234, 179, 8, 0.8) !important;
+  margin-left: 5px;
+}
+

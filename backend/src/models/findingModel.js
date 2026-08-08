@@ -12,6 +12,7 @@ const mapFinding = (row) => {
     recommendation: row.recommendation,
     original_code_snippet: row.original_code_snippet,
     suggested_fix: row.suggested_fix,
+    fixed_code: row.fixed_code,
     created_at: row.created_at,
   };
 };
@@ -28,9 +29,10 @@ async function createFindings(reviewId, findingsList) {
       finding.issue || "No issue provided",
       finding.recommendation || "No recommendation provided",
       finding.originalCodeSnippet || null,
-      finding.suggestedFix || null
+      finding.suggestedFix || null,
+      finding.fixedCode || null
     );
-    return "(?, ?, ?, ?, ?, ?, ?)";
+    return "(?, ?, ?, ?, ?, ?, ?, ?)";
   });
 
   const query = `
@@ -41,7 +43,8 @@ async function createFindings(reviewId, findingsList) {
       issue,
       recommendation,
       original_code_snippet,
-      suggested_fix
+      suggested_fix,
+      fixed_code
     ) VALUES ${placeholders.join(", ")}
   `;
 
@@ -59,6 +62,7 @@ async function getFindingsByReviewId(reviewId) {
       recommendation,
       original_code_snippet,
       suggested_fix,
+      fixed_code,
       created_at
     FROM review_findings
     WHERE review_id = ?

@@ -1,3 +1,5 @@
+import { apiUrl } from "@/lib/api";
+
 export const repositorySummary = {
   name: "Workspace Mode",
   branch: "Local",
@@ -109,24 +111,7 @@ function buildTreeFromGithub(githubTreeArray) {
 }
 
 export async function fetchRepositoryData(repoId, repoUrl, repoBranch) {
-  let owner = null;
-  let repo = null;
-  
-  if (repoUrl && repoUrl.includes("github.com")) {
-    try {
-      const urlObj = new URL(repoUrl);
-      const parts = urlObj.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2) {
-        owner = parts[0];
-        repo = parts[1].replace(".git", "");
-      }
-    } catch (e) {
-      console.error("Failed to parse github URL", e);
-    }
-  }
-
-  // Fallback to mock data if not a valid GitHub URL
-  if (!owner || !repo) {
+  if (!repoId) {
     await new Promise((resolve) => setTimeout(resolve, 600));
     return {
       tree: mockRepositoryTree,
@@ -135,10 +120,20 @@ export async function fetchRepositoryData(repoId, repoUrl, repoBranch) {
   }
 
   const branch = repoBranch || "main";
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`);
+  
+  let token = null;
+  try {
+    token = window.localStorage.getItem("auth_token");
+  } catch (e) {
+    // Ignore error
+  }
+
+  const res = await fetch(apiUrl(`/repositories/${repoId}/tree?branch=${encodeURIComponent(branch)}`), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
   
   if (!res.ok) {
-    throw new Error(`GitHub API Error: ${res.statusText} (${res.status})`);
+    throw new Error(`Failed to Load Repository. Backend API Error (${res.status})`);
   }
 
   const data = await res.json();
@@ -152,4 +147,3 @@ export async function fetchRepositoryData(repoId, repoUrl, repoBranch) {
 
   return { tree, files };
 }
-

@@ -61,7 +61,7 @@ function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder
   );
 }
 
-export function ReviewFileExplorer({ tree = [], repository = { name: "", branch: "" }, onFileSelect, onRefresh, activeFile }) {
+export function ReviewFileExplorer({ tree = [], repository = { name: "", branch: "" }, onFileSelect, onRefresh, activeFile, projectContext, isDetectingContext, onRefreshContext }) {
   const [expandedFolders, setExpandedFolders] = useState(new Set(["src", "components", "services"]));
 
   const toggleFolder = (folderName) => {
@@ -126,6 +126,36 @@ export function ReviewFileExplorer({ tree = [], repository = { name: "", branch:
               Select or paste files directly into the editor to begin analysis.
             </p>
           </div>
+        )}
+      </div>
+
+      <div className="border-t border-[#2d333b] p-4 flex flex-col gap-2 shrink-0 max-h-[40%] overflow-y-auto custom-scrollbar">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold tracking-wider text-slate-400">PROJECT STACK</span>
+          <button 
+            onClick={onRefreshContext}
+            className="text-[11px] text-sky-400 hover:text-sky-300 disabled:opacity-50"
+            disabled={isDetectingContext}
+          >
+            {isDetectingContext ? "Scanning..." : "Rescan"}
+          </button>
+        </div>
+        
+        {isDetectingContext && !projectContext ? (
+          <div className="text-[12px] text-slate-500 italic">Detecting tech stack...</div>
+        ) : projectContext ? (
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {[...(projectContext.languages || []), ...(projectContext.frameworks || []), ...(projectContext.databases || []), ...(projectContext.tools || [])].map((tech, i) => (
+              <span key={i} className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300">
+                {tech}
+              </span>
+            ))}
+            {(!projectContext.languages?.length && !projectContext.frameworks?.length && !projectContext.databases?.length && !projectContext.tools?.length) && (
+              <span className="text-[12px] text-slate-500">No specific stack detected.</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-[12px] text-slate-500">No context available.</div>
         )}
       </div>
     </aside>

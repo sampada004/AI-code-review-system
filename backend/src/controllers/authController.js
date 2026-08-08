@@ -80,9 +80,143 @@ async function logout(req, res, next) {
   }
 }
 
+const crypto = require("crypto");
+const githubAccountModel = require("../models/githubAccountModel");
+const encryption = require("../utils/encryption");
+
+async function githubLogin(req, res, next) {
+  try {
+    const state = crypto.randomBytes(16).toString("hex");
+    res.cookie("oauth_state", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 1000 * 60 * 10, // 10 minutes
+      path: "/",
+    });
+
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI;
+    if (!clientId || !redirectUri) {
+      throw new Error("GitHub OAuth is not configured properly");
+    }
+
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user user:email repo&state=${state}`;
+    res.redirect(githubAuthUrl);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function githubCallback(req, res, next) {
+  try {
+    const { code, state } = req.query;
+    
+    // Check CSRF state
+    const cookieState = req.headers.cookie?.split('; ')?.find(row => row.startsWith('oauth_state='))?.split('=')[1];
+    
+    if (!state || state !== cookieState) {
+      return res.status(403).json({ success: false, message: "Invalid state parameter (CSRF protection)" });
+    }
+
+    // Clear state cookie
+    res.clearCookie("oauth_state", { path: "/" });
+
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI;
+
+    // Exchange code for access token
+    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (tokenData.error) {
+      throw new Error(`GitHub token error: ${tokenData.error_description}`);
+    }
+
+    const accessToken = tokenData.access_token;
+
+    // Fetch user info from GitHub
+    const userResponse = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+    
+    const githubUser = await userResponse.json();
+
+    // Fetch primary email
+    const emailResponse = await fetch("https://api.github.com/user/emails", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+      },
+    });
+    
+    const emails = await emailResponse.json();
+    const primaryEmailObj = emails.find(e => e.primary) || emails[0];
+    if (!primaryEmailObj) {
+      throw new Error("No email found on GitHub account");
+    }
+    const primaryEmail = primaryEmailObj.email;
+
+    // See if user exists
+    let user = await userModel.findByEmail(primaryEmail);
+
+    if (!user) {
+      // Create user
+      user = await userModel.create({
+        fullName: githubUser.name || githubUser.login,
+        email: primaryEmail,
+        hashedPassword: null,
+      });
+    }
+
+    // Encrypt token and store in github_accounts
+    const encryptedToken = encryption.encryptToken(accessToken);
+    await githubAccountModel.createOrUpdate({
+      userId: user.id,
+      githubId: String(githubUser.id),
+      githubUsername: githubUser.login,
+      githubAvatarUrl: githubUser.avatar_url,
+      encryptedAccessToken: encryptedToken,
+    });
+
+    // Create JWT
+    const safeUser = {
+      id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+    };
+    const token = authService.createToken(safeUser);
+
+    res.cookie("auth_token", token, getAuthCookieOptions());
+    
+    // Redirect to frontend callback page
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   logout,
   login,
   me,
   register,
+  githubLogin,
+  githubCallback,
 };

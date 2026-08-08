@@ -2,6 +2,7 @@ const reviewService = require("../services/reviewService");
 const aiService = require("../services/aiService");
 const reviewModel = require("../models/reviewModel");
 const findingModel = require("../models/findingModel");
+const repositoryModel = require("../models/repositoryModel");
 
 async function submitReview(req, res, next) {
   try {
@@ -54,13 +55,21 @@ async function getUserReviews(req, res, next) {
 
 async function analyzeCode(req, res, next) {
   try {
-    const { sourceCode, fileName, repositoryId, language } = req.body;
+    const { sourceCode, fileName, repositoryId, language, isRevalidation, previousFindings } = req.body;
 
     if (!sourceCode) {
       return res.status(400).json({ success: false, message: "Source code is required." });
     }
 
-    const analysis = await aiService.analyzeCode(sourceCode, fileName || "unknown");
+    let projectContext = null;
+    if (repositoryId) {
+      const repo = await repositoryModel.findById(repositoryId);
+      if (repo && repo.project_context) {
+        projectContext = repo.project_context;
+      }
+    }
+
+    const analysis = await aiService.analyzeCode(sourceCode, fileName, isRevalidation, previousFindings, projectContext);
 
     // Persist to database
     try {
