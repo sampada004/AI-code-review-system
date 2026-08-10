@@ -6,34 +6,20 @@ const repositoryModel = require("../models/repositoryModel");
 
 async function submitReview(req, res, next) {
   try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
     const review = await reviewService.createReview({
       userId: req.user.id,
       title: req.body.title,
       sourceCode: req.body.sourceCode,
-      language: req.body.language,
+      language: req.body.language || 'plaintext',
     });
 
     res.status(201).json({
       success: true,
       message: "Review created successfully",
       review,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-async function getReview(req, res, next) {
-  try {
-    const review = await reviewService.getReview(req.params.id);
-    const findings = await findingModel.getFindingsByReviewId(review.id);
-
-    res.status(200).json({
-      success: true,
-      review: {
-        ...review,
-        findings,
-      },
     });
   } catch (error) {
     next(error);
@@ -62,7 +48,7 @@ async function analyzeCode(req, res, next) {
     }
 
     let projectContext = null;
-    if (repositoryId) {
+    if (repositoryId && typeof repositoryId === 'string' && repositoryId.trim() !== '') {
       const repo = await repositoryModel.findById(repositoryId);
       if (repo && repo.project_context) {
         projectContext = repo.project_context;
@@ -104,7 +90,6 @@ async function analyzeCode(req, res, next) {
 
 module.exports = {
   submitReview,
-  getReview,
   getUserReviews,
   analyzeCode,
 };
