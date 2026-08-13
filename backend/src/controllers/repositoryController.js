@@ -114,6 +114,16 @@ async function createPullRequest(req, res, next) {
       body: body || "Automated PR created by CodePilot AI."
     });
 
+    try {
+      const reviewModel = require("../models/reviewModel");
+      const activeParent = await reviewModel.findActiveParentReview(req.params.id, filePath);
+      if (activeParent) {
+        await reviewModel.updateReviewStatus(activeParent.id, "PR_CREATED", prResult.prUrl, prResult.branchName);
+      }
+    } catch (e) {
+      console.error("Failed to update parent review PR status", e);
+    }
+
     res.status(201).json({ success: true, pullRequest: prResult });
   } catch (err) {
     console.error("PR Creation Error:", err);

@@ -44,6 +44,17 @@ function getLanguageFromFilename(fileName) {
   }
 }
 
+function calculateSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const tokenize = (s) => s.toLowerCase().match(/\w+/g) || [];
+  const tokens1 = new Set(tokenize(str1));
+  const tokens2 = new Set(tokenize(str2));
+  let intersection = 0;
+  tokens1.forEach(t => { if (tokens2.has(t)) intersection++; });
+  const union = tokens1.size + tokens2.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
 export default function HistoryDetails({ reviewId }) {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +62,7 @@ export default function HistoryDetails({ reviewId }) {
   const editorHostRef = useRef(null);
   const editorInstanceRef = useRef(null);
   const [isFixesCollapsed, setIsFixesCollapsed] = useState(false);
+  const [validationReport, setValidationReport] = useState(null);
 
   useEffect(() => {
     async function fetchReview() {
@@ -71,7 +83,63 @@ export default function HistoryDetails({ reviewId }) {
           throw new Error(data.message || "Failed to load review details");
         }
 
-        setReview(data.review);
+        if (data.latestReview && data.latestReview.id !== data.review.id) {
+          const originalFindings = data.review.findings || [];
+          const newFindings = data.latestReview.findings || [];
+          
+          const resolved = [];
+          const remaining = [];
+          const newIssues = [];
+          
+          originalFindings.forEach(orig => {
+            if (orig.ignored) {
+              orig.isResolved = true;
+              resolved.push(orig);
+              return;
+            }
+            const match = newFindings.find(nf => {
+              const str1 = orig.issue + " " + (orig.recommendation || "");
+              const str2 = nf.issue + " " + (nf.recommendation || "");
+              return calculateSimilarity(str1, str2) > 0.25;
+            });
+            if (match) {
+              orig.isResolved = false;
+              remaining.push(match);
+            } else {
+              orig.isResolved = true;
+              resolved.push(orig);
+            }
+          });
+          
+          newFindings.forEach(nf => {
+            const match = originalFindings.find(orig => {
+              const str1 = orig.issue + " " + (orig.recommendation || "");
+              const str2 = nf.issue + " " + (nf.recommendation || "");
+              return calculateSimilarity(str1, str2) > 0.25;
+            });
+            if (!match) {
+              newIssues.push(nf);
+            }
+          });
+          
+          let status = "all_resolved";
+          if (newIssues.length > 0) status = "new_issues";
+          else if (remaining.length > 0) status = "partial";
+          
+          setValidationReport({
+            status,
+            resolved,
+            remaining,
+            newIssues,
+            severityBefore: data.review.overall_severity,
+            severityAfter: data.latestReview.overall_severity || "none"
+          });
+          
+          // Re-set review with augmented findings
+          setReview({ ...data.review, findings: originalFindings });
+        } else {
+          setReview(data.review);
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -194,6 +262,7 @@ export default function HistoryDetails({ reviewId }) {
             summary={review.ai_summary || ""}
             overallSeverity={review.overall_severity || "none"}
             isHistoryMode={true}
+            validationReport={validationReport}
           />
         </div>
       </div>

@@ -19,6 +19,7 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   findings = [],
   selectedFindingIndex = null,
   onSelectFinding,
+  appliedFixes = new Set(),
 }, ref) {
   const editorInstanceRef = useRef(null);
   const monacoInstanceRef = useRef(null);
@@ -143,10 +144,16 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
         const line = finding.lineNumber || finding.line_number || 1;
         const snippet = finding.originalCodeSnippet || finding.original_code_snippet || "";
         const snippetLines = snippet ? snippet.split(/\r\n|\r|\n/).length : 1;
-        const endLine = Math.max(line, line + snippetLines - 1);
+        const rawEndLine = Math.max(line, line + snippetLines - 1);
         const model = editor.getModel();
-        const endColumn = model ? model.getLineMaxColumn(endLine) : 1;
-        range = new monaco.Range(line, 1, endLine, endColumn);
+        
+        // Clamp to prevent React unhandled exception crash from Monaco out-of-bounds error
+        const lineCount = model ? model.getLineCount() : 1;
+        const safeLine = Math.min(Math.max(line, 1), lineCount);
+        const safeEndLine = Math.min(Math.max(rawEndLine, safeLine), lineCount);
+        const endColumn = model ? model.getLineMaxColumn(safeEndLine) : 1;
+        
+        range = new monaco.Range(safeLine, 1, safeEndLine, endColumn);
       }
       
       const severity = (finding.severity || "low").toLowerCase();
@@ -155,7 +162,11 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
       let gutterClass = "monaco-gutter-low";
       let overviewRulerColor = "rgba(234, 179, 8, 0.8)"; // yellow
 
-      if (severity === "high") {
+      if (appliedFixes.has(idx)) {
+        highlightClass = "monaco-highlight-applied";
+        gutterClass = "monaco-gutter-applied";
+        overviewRulerColor = "rgba(16, 185, 129, 0.8)"; // green
+      } else if (severity === "high") {
         highlightClass = "monaco-highlight-high";
         gutterClass = "monaco-gutter-high";
         overviewRulerColor = "rgba(239, 68, 68, 0.8)"; // red
@@ -189,7 +200,7 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
     } else {
       decorationsCollectionRef.current = editor.createDecorationsCollection(newDecorations);
     }
-  }, [findings]);
+  }, [findings, appliedFixes]);
 
   // Sync selectedFindingIndex to editor scroll position
   useEffect(() => {

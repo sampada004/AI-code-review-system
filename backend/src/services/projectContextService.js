@@ -12,16 +12,16 @@ async function detectProjectContext(repoId, branch) {
       tools: [],
     };
 
-    const rootFiles = tree.filter(f => !f.path.includes('/'));
-
     // Check Node.js
-    const packageJsonFile = rootFiles.find(f => f.path === 'package.json');
-    if (packageJsonFile) {
+    const packageJsonFiles = tree.filter(f => f.path.endsWith('package.json'));
+    if (packageJsonFiles.length > 0) {
       context.languages.push('JavaScript/TypeScript');
       context.tools.push('Node.js (npm/yarn)');
 
+      for (const packageJsonFile of packageJsonFiles) {
+
       try {
-        const pkgStr = await repositoryService.getRepositoryFile(repoId, 'package.json', branch);
+        const pkgStr = await repositoryService.getRepositoryFile(repoId, packageJsonFile.path, branch);
         const pkg = JSON.parse(pkgStr);
         const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
 
@@ -49,22 +49,23 @@ async function detectProjectContext(repoId, branch) {
         // CSS
         if (deps['tailwindcss']) context.tools.push('Tailwind CSS');
       } catch (e) {
-        console.error("Error parsing package.json:", e.message);
+        console.error(`Error parsing ${packageJsonFile.path}:`, e.message);
       }
-    }
+      } // close for loop
+    } // close if statement
 
     // Check Python
-    const requirementsTxt = rootFiles.find(f => f.path === 'requirements.txt');
-    const pyprojectToml = rootFiles.find(f => f.path === 'pyproject.toml');
-    if (requirementsTxt || pyprojectToml) {
+    const requirementsFiles = tree.filter(f => f.path.endsWith('requirements.txt'));
+    const pyprojectFiles = tree.filter(f => f.path.endsWith('pyproject.toml'));
+    if (requirementsFiles.length > 0 || pyprojectFiles.length > 0) {
       if (!context.languages.includes('Python')) context.languages.push('Python');
       
       let pyDeps = "";
       try {
-        if (requirementsTxt) {
-          pyDeps = await repositoryService.getRepositoryFile(repoId, 'requirements.txt', branch);
-        } else if (pyprojectToml) {
-          pyDeps = await repositoryService.getRepositoryFile(repoId, 'pyproject.toml', branch);
+        if (requirementsFiles.length > 0) {
+          pyDeps = await repositoryService.getRepositoryFile(repoId, requirementsFiles[0].path, branch);
+        } else if (pyprojectFiles.length > 0) {
+          pyDeps = await repositoryService.getRepositoryFile(repoId, pyprojectFiles[0].path, branch);
         }
         
         const pyDepsLower = pyDeps.toLowerCase();
@@ -82,12 +83,12 @@ async function detectProjectContext(repoId, branch) {
     }
 
     // Check Java
-    const pomXml = rootFiles.find(f => f.path === 'pom.xml');
-    if (pomXml) {
+    const pomXmlFiles = tree.filter(f => f.path.endsWith('pom.xml'));
+    if (pomXmlFiles.length > 0) {
       if (!context.languages.includes('Java')) context.languages.push('Java');
       context.tools.push('Maven');
       try {
-        const pom = await repositoryService.getRepositoryFile(repoId, 'pom.xml', branch);
+        const pom = await repositoryService.getRepositoryFile(repoId, pomXmlFiles[0].path, branch);
         if (pom.includes('spring-boot')) context.frameworks.push('Spring Boot');
         if (pom.includes('hibernate')) context.databases.push('Hibernate ORM');
         if (pom.includes('mysql-connector')) context.databases.push('MySQL');
@@ -97,8 +98,8 @@ async function detectProjectContext(repoId, branch) {
     }
 
     // Check Go
-    const goMod = rootFiles.find(f => f.path === 'go.mod');
-    if (goMod) {
+    const goModFiles = tree.filter(f => f.path.endsWith('go.mod'));
+    if (goModFiles.length > 0) {
        if (!context.languages.includes('Go')) context.languages.push('Go');
     }
 

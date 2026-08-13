@@ -36,10 +36,22 @@ function FixCard({ fix, isSelected, onClick, isApplied, onUndo, onIgnore }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div
-            className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${severityTone[fix.severity] || severityTone.low}`}
-          >
-            {fix.severity} severity
+          <div className="flex items-center gap-2">
+            <div
+              className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${severityTone[fix.severity] || severityTone.low}`}
+            >
+              {fix.severity} severity
+            </div>
+            {fix.isResolved === true && (
+              <div className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" /> Resolved
+              </div>
+            )}
+            {fix.isResolved === false && (
+              <div className="inline-flex items-center gap-1 rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-rose-400">
+                <AlertTriangle className="h-3 w-3" /> Unresolved
+              </div>
+            )}
           </div>
           <h3 className="mt-3 text-[15px] font-semibold tracking-[-0.01em] text-[#e9edf5]">
             {fix.title}
@@ -66,7 +78,7 @@ function FixCard({ fix, isSelected, onClick, isApplied, onUndo, onIgnore }) {
         )}
       </div>
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-        {fix.fixedCode && (
+        {fix.fixedCode && fix.onViewFix && (
           isApplied ? (
             <button
               type="button"
@@ -91,16 +103,18 @@ function FixCard({ fix, isSelected, onClick, isApplied, onUndo, onIgnore }) {
             </button>
           )
         )}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onIgnore) onIgnore();
-          }}
-          className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-white/10 bg-white/5 px-3 py-2 text-[12px] font-medium text-slate-200 transition hover:bg-white/10"
-        >
-          Ignore
-        </button>
+        {onIgnore && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onIgnore) onIgnore();
+            }}
+            className="inline-flex flex-1 items-center justify-center rounded-[4px] border border-white/10 bg-white/5 px-3 py-2 text-[12px] font-medium text-slate-200 transition hover:bg-white/10"
+          >
+            Ignore
+          </button>
+        )}
       </div>
     </article>
   );
@@ -122,6 +136,8 @@ export function ReviewFixesPanel({
   onRevalidate,
   isRevalidating = false,
   validationReport = null,
+  backgroundValidationReport = null,
+  isBackgroundValidating = false,
   originalReview = null,
   onCreatePullRequest,
   isCreatingPR = false,
@@ -203,6 +219,24 @@ export function ReviewFixesPanel({
             </div>
           )}
 
+          {isBackgroundValidating && !validationReport && (
+            <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02] flex items-center gap-3">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
+              <span className="text-[12px] text-sky-400 font-medium">Validating syntax in background...</span>
+            </div>
+          )}
+
+          {backgroundValidationReport?.status === "new_issues" && !validationReport && (
+            <div className="px-4 py-3 border-b border-rose-500/10 bg-rose-500/[0.02]">
+              <div className="rounded border border-rose-500/30 bg-rose-500/10 p-3 text-[13px] text-rose-200">
+                <div className="font-semibold text-rose-400 flex items-center gap-2 mb-1">
+                  <span className="text-lg">🚨</span> Regression Detected!
+                </div>
+                Your applied fix has introduced new syntax errors or bugs.
+              </div>
+            </div>
+          )}
+
           {validationReport && (
             <div className="px-4 py-4 border-b border-white/5 bg-white/[0.02]">
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-slate-500 mb-3 flex items-center justify-between">
@@ -217,6 +251,14 @@ export function ReviewFixesPanel({
                   <span className="flex items-center gap-1 text-rose-400 normal-case tracking-normal"><AlertTriangle className="w-3 h-3"/> New Issues</span>
                 )}
               </h4>
+              {validationReport.status === "new_issues" && (
+                <div className="mb-3 rounded border border-rose-500/30 bg-rose-500/10 p-3 text-[13px] text-rose-200">
+                  <div className="font-semibold text-rose-400 flex items-center gap-2 mb-1">
+                    <span className="text-lg">🚨</span> Regression Detected!
+                  </div>
+                  Your applied fix has introduced new syntax errors or bugs. Please review the new findings below.
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-2 text-center text-[12px] mb-3">
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded p-2 text-emerald-300">
                   <div className="font-bold text-[14px]">{validationReport.resolved.length}</div>
@@ -259,7 +301,8 @@ export function ReviewFixesPanel({
                       originalCodeSnippet: finding.original_code_snippet || finding.originalCodeSnippet,
                       suggestedFix: finding.suggested_fix || finding.suggestedFix,
                       fixedCode: finding.fixed_code || finding.fixedCode,
-                      onViewFix: () => {
+                      isResolved: finding.isResolved,
+                      onViewFix: isHistoryMode ? null : () => {
                         if (onSelectFinding) onSelectFinding(idx);
                         setSelectedDiffData({
                           idx,
@@ -272,8 +315,8 @@ export function ReviewFixesPanel({
                       }
                     }}
                     isApplied={appliedFixes.has(idx)}
-                    onUndo={() => onUndoFix && onUndoFix(idx)}
-                    onIgnore={() => onIgnoreFix && onIgnoreFix(idx)}
+                    onUndo={isHistoryMode ? null : () => onUndoFix && onUndoFix(idx)}
+                    onIgnore={isHistoryMode ? null : () => onIgnoreFix && onIgnoreFix(idx)}
                   />
                 );
               })

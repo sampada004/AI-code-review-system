@@ -27,6 +27,18 @@ async function getReview(req, res, next) {
   try {
     const review = await reviewService.getReview(req.params.id);
     const findings = await findingModel.getFindingsByReviewId(review.id);
+    
+    // Find the latest review in this chain to see if issues were resolved
+    const parentId = review.parent_review_id || review.id;
+    let latestFindings = null;
+    let latestReview = null;
+    
+    // Quick query to get the latest review in the chain
+    const latestIdRows = await reviewModel.getLatestReviewInChain(parentId);
+    if (latestIdRows && latestIdRows.id !== review.id) {
+      latestReview = latestIdRows;
+      latestFindings = await findingModel.getFindingsByReviewId(latestReview.id);
+    }
 
     res.status(200).json({
       success: true,
@@ -34,6 +46,7 @@ async function getReview(req, res, next) {
         ...review,
         findings,
       },
+      latestReview: latestReview ? { ...latestReview, findings: latestFindings } : null
     });
   } catch (error) {
     next(error);
@@ -71,6 +84,26 @@ async function analyzeCode(req, res, next) {
 
     const analysis = await aiService.analyzeCode(sourceCode, fileName, isRevalidation, previousFindings, projectContext);
 
+    // Handle Review Session (Parent/Child)
+    let parentReviewId = null;
+    let reviewStatus = "COMPLETED";
+
+    if (repositoryId && fileName) {
+      const activeParent = await require("../models/reviewModel").findActiveParentReview(repositoryId, fileName);
+      if (activeParent) {
+        if (isRevalidation) {
+          parentReviewId = activeParent.id;
+          reviewStatus = (analysis.findings || []).length === 0 ? "CLEAN" : "REVALIDATED";
+          // Update the parent's status
+          await require("../models/reviewModel").updateReviewStatus(activeParent.id, reviewStatus, null, null, analysis.overallSeverity || "none");
+        } else {
+          // It's a new analysis, but we have an active parent. We could leave the old one or mark it closed?
+          // Actually, if we do a fresh analysis, maybe we start a new session?
+          // Let's just create a new parent if it's NOT a revalidation.
+        }
+      }
+    }
+
     // Persist to database
     try {
       const review = await reviewModel.createReview({
@@ -80,9 +113,10 @@ async function analyzeCode(req, res, next) {
         title: `Review for ${fileName || "unknown file"}`,
         sourceCode: sourceCode,
         language: language || "plaintext",
-        reviewStatus: "COMPLETED",
+        reviewStatus: parentReviewId ? reviewStatus : ((analysis.findings || []).length === 0 ? "CLEAN" : "COMPLETED"),
         aiSummary: analysis.summary || null,
         overallSeverity: analysis.overallSeverity || "none",
+        parentReviewId: parentReviewId
       });
 
       if (analysis.findings && analysis.findings.length > 0) {

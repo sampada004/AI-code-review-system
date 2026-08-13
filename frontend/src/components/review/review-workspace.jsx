@@ -104,7 +104,9 @@ export function ReviewWorkspace() {
   // Re-validation state
   const [originalReview, setOriginalReview] = useState(null);
   const [validationReport, setValidationReport] = useState(null);
+  const [backgroundValidationReport, setBackgroundValidationReport] = useState(null);
   const [isRevalidating, setIsRevalidating] = useState(false);
+  const [isBackgroundValidating, setIsBackgroundValidating] = useState(false);
   const [isCreatingPR, setIsCreatingPR] = useState(false);
   
   // Repository State
@@ -466,13 +468,19 @@ export function ReviewWorkspace() {
     };
   };
 
-  const handleAnalyze = async ({ sourceCode, language, isRevalidation = false } = {}) => {
+  const handleAnalyze = async ({ sourceCode, language, isRevalidation = false, isBackground = false } = {}) => {
     // begin analysis / submit review
-    setStatusMessage("");
-    setAnalysisState("analyzing");
-    if (isRevalidation) setIsRevalidating(true);
-    // ensure panel is hidden during analysis
-    setIsFixesCollapsed(true);
+    if (!isBackground) {
+      setStatusMessage("");
+      setAnalysisState("analyzing");
+      setFindings([]); // Clear findings to reset editor decorations
+      setValidationReport(null);
+      if (isRevalidation) setIsRevalidating(true);
+      // ensure panel is hidden during analysis
+      setIsFixesCollapsed(true);
+    } else {
+      setIsBackgroundValidating(true);
+    }
 
     const payload = {
       sourceCode: sourceCode || "",
@@ -562,14 +570,25 @@ export function ReviewWorkspace() {
         if (newIssues.length > 0) status = "new_issues";
         else if (remaining.length > 0) status = "partial";
         
-        setValidationReport({
-          status,
-          resolved,
-          remaining,
-          newIssues,
-          severityBefore: originalReview.overallSeverity,
-          severityAfter: analysis?.overallSeverity || "none"
-        });
+        if (isBackground) {
+          setBackgroundValidationReport({
+            status,
+            resolved,
+            remaining,
+            newIssues,
+            severityBefore: originalReview.overallSeverity,
+            severityAfter: analysis?.overallSeverity || "none"
+          });
+        } else {
+          setValidationReport({
+            status,
+            resolved,
+            remaining,
+            newIssues,
+            severityBefore: originalReview.overallSeverity,
+            severityAfter: analysis?.overallSeverity || "none"
+          });
+        }
       } else {
         // First time analysis
         setOriginalReview({
@@ -578,23 +597,32 @@ export function ReviewWorkspace() {
           overallSeverity: analysis?.overallSeverity || "none"
         });
         setValidationReport(null);
+        setBackgroundValidationReport(null);
       }
 
-      setFindings(newFindings);
-      setAnalysisSummary(analysis?.summary || "Analysis completed.");
-      setOverallSeverity(analysis?.overallSeverity || "none");
-      setSelectedFindingIndex(null);
-      setAppliedFixes(new Set());
-      
-      setStatusMessage(isRevalidation ? "Re-validation completed" : "Review completed successfully");
-      setAnalysisState("completed");
-      if (isRevalidation) setIsRevalidating(false);
-      // show AI Suggested Fixes panel when done
-      setIsFixesCollapsed(false);
+      if (!isBackground) {
+        setFindings(newFindings);
+        setAnalysisSummary(analysis?.summary || "Analysis completed.");
+        setOverallSeverity(analysis?.overallSeverity || "none");
+        setSelectedFindingIndex(null);
+        setAppliedFixes(new Set());
+        
+        setStatusMessage(isRevalidation ? "Re-validation completed" : "Review completed successfully");
+        setAnalysisState("completed");
+        if (isRevalidation) setIsRevalidating(false);
+        // show AI Suggested Fixes panel when done
+        setIsFixesCollapsed(false);
+      } else {
+        setIsBackgroundValidating(false);
+      }
     } catch (err) {
-      setStatusMessage(err?.message || "Network error");
-      setAnalysisState("error");
-      setIsRevalidating(false);
+      if (!isBackground) {
+        setStatusMessage(err?.message || "Network error");
+        setAnalysisState("error");
+        setIsRevalidating(false);
+      } else {
+        setIsBackgroundValidating(false);
+      }
     }
   };
 
@@ -606,6 +634,22 @@ export function ReviewWorkspace() {
     const language = getLanguageFromFilename(selectedFileName);
     handleAnalyze({ sourceCode: source, language, isRevalidation: true });
   };
+
+  // Debounced auto-validation when fixes are applied
+  useEffect(() => {
+    if (appliedFixes.size === 0) return;
+    
+    // Prevent auto-revalidating if we are already in the process
+    if (isRevalidating || analysisState === "analyzing" || isBackgroundValidating) return;
+
+    const timer = setTimeout(() => {
+      let source = editorRef.current ? editorRef.current.getValue() : "";
+      const language = getLanguageFromFilename(selectedFileName);
+      handleAnalyze({ sourceCode: source, language, isRevalidation: true, isBackground: true });
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [appliedFixes]);
 
   const handleCreatePullRequest = async () => {
     if (!repoId || !selectedFileName || !editorRef.current) return;
@@ -753,6 +797,7 @@ export function ReviewWorkspace() {
                         findings={findings}
                         selectedFindingIndex={selectedFindingIndex}
                         onSelectFinding={setSelectedFindingIndex}
+                        appliedFixes={appliedFixes}
                       />
                     </div>
                   {analysisState === "completed" && !isFixesCollapsed ? (
@@ -786,7 +831,9 @@ export function ReviewWorkspace() {
                       onIgnoreFix={handleIgnoreFix}
                       onRevalidate={handleRevalidate}
                       isRevalidating={isRevalidating}
+                      isBackgroundValidating={isBackgroundValidating}
                       validationReport={validationReport}
+                      backgroundValidationReport={backgroundValidationReport}
                       originalReview={originalReview}
                       onCreatePullRequest={handleCreatePullRequest}
                       isCreatingPR={isCreatingPR}

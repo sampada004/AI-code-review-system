@@ -8,6 +8,12 @@ async function analyzeCode(sourceCode, fileName, isRevalidation = false, previou
 
 You are an expert AI code reviewer. Your task is to analyze the provided source code for bugs, security vulnerabilities, performance issues, code smells, and best practice violations.
 
+CRITICAL FIRST STEP - ACT AS A COMPILER: Before looking for stylistic issues, you MUST act as a strict compiler/linter. Scan the code meticulously for:
+- Missing commas, semicolons, brackets '{}', or parentheses '()'.
+- Unclosed strings or template literals.
+- Undeclared variables, undefined references, or syntax errors.
+If you find ANY syntax or compilation errors, report them immediately as HIGH severity issues.
+
 Write your explanations in plain, easy-to-understand English. Avoid overly dense technical jargon where possible. Explain concepts clearly so that even junior developers can easily understand the issue and the solution.
 
 You MUST respond with a strict JSON object matching the following structure exactly. Output ONLY the raw JSON object.
@@ -22,9 +28,9 @@ IMPORTANT: Ensure all strings within your JSON are properly escaped (e.g., escap
       "lineNumber": 12, // This MUST be the STARTING line number of the problematic snippet
       "issue": "Description of the issue.",
       "recommendation": "How to fix the issue.",
-      "originalCodeSnippet": "The EXACT, verbatim lines of original code to be replaced. DO NOT wrap in markdown backticks. MUST NOT contain placeholders or ellipses (...).",
+      "originalCodeSnippet": "The EXACT, verbatim lines of original code to be replaced. DO NOT wrap in markdown backticks. MUST NOT contain placeholders or ellipses (...). CRITICAL: Provide the exact minimal contiguous block of lines needed. Include 1-2 lines of surrounding context if necessary to make it unique, but DO NOT output the entire function.",
       "suggestedFix": "A brief explanation of the code changes being made.",
-      "fixedCode": "The EXACT, complete replacement code. DO NOT wrap in markdown backticks. MUST NOT contain placeholders, comments like '// existing code', or ellipses (...). It MUST be a perfectly syntactically valid drop-in replacement."
+      "fixedCode": "The EXACT, complete replacement code. DO NOT wrap in markdown backticks. MUST NOT contain placeholders or comments like '// existing code'. CRITICAL: This must be a perfectly syntactically valid drop-in replacement for the originalCodeSnippet."
     }
   ]
 }
@@ -38,6 +44,8 @@ ${previousFindings ? JSON.stringify(previousFindings.map(f => ({ issue: f.issue,
 Your task is ONLY to:
 1. Check if the previous issues have been successfully fixed.
 2. Check if the developer's recent changes introduced any NEW severe bugs (regressions).
+3. CRITICAL: If an issue is NOT fixed, or if a NEW bug is found, you MUST provide the complete 'originalCodeSnippet' and 'fixedCode' exactly as requested in the JSON schema so the developer can apply the fix.
+
 DO NOT report any pre-existing minor or stylistic issues that you did not mention in your previous review. If the code is fixed and no new bugs were introduced, return an empty findings array!`
   : "CRITICAL: You must identify and return MULTIPLE distinct issues if they exist in the code. Do not stop at just one issue. Find all critical bugs, vulnerabilities, performance issues, and bad practices. Ensure you return a comprehensive findings array containing every issue."}
 

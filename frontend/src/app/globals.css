@@ -62,4 +62,11 @@ body {
   border-left: 3px solid rgba(234, 179, 8, 0.8) !important;
   margin-left: 5px;
 }
+.monaco-highlight-applied {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.monaco-gutter-applied {
+  border-left: 3px solid rgba(16, 185, 129, 0.8) !important;
+  margin-left: 5px;
+}
 
