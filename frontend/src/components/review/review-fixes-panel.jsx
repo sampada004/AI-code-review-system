@@ -141,6 +141,7 @@ export function ReviewFixesPanel({
   originalReview = null,
   onCreatePullRequest,
   isCreatingPR = false,
+  createdPrData = null,
 }) {
   const [selectedDiffData, setSelectedDiffData] = useState(null);
   const hasRun = !!summary || isHistoryMode || findings.length > 0;
@@ -148,7 +149,7 @@ export function ReviewFixesPanel({
   const hasFindings = activeFindings.length > 0;
   return (
     <aside
-      className={`flex h-full min-h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[2px] border border-[#3a404b] bg-[#141821] shadow-[0_16px_44px_rgba(0,0,0,0.35)] transition-[width] duration-300 ease-out ${
+      className={`flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#141821] shadow-xl transition-[width] duration-300 ease-out ${
         collapsed ? "w-full xl:w-[56px]" : "w-full xl:w-[360px]"
       }`}
     >
@@ -226,6 +227,26 @@ export function ReviewFixesPanel({
             </div>
           )}
 
+          {backgroundValidationReport?.status === "auto_resolved" && !validationReport && (
+            <div className="px-4 py-3 border-b border-emerald-500/10 bg-emerald-500/[0.02]">
+              <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3 text-[13px] text-emerald-200">
+                <div className="font-semibold text-emerald-400 flex items-center gap-2 mb-1">
+                  <span className="text-lg">✨</span> Auto-Resolved!
+                </div>
+                A regression was detected after your fix, but the AI automatically resolved it for you.
+                
+                <div className="mt-3 space-y-2">
+                  {backgroundValidationReport.newIssues.map((issue, idx) => (
+                    <div key={idx} className="rounded bg-emerald-500/10 p-2 text-[12px] border border-emerald-500/20">
+                      <span className="font-semibold">{issue.issue}</span>
+                      <p className="mt-1 opacity-80">Automatically fixed: {issue.recommendation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {backgroundValidationReport?.status === "new_issues" && !validationReport && (
             <div className="px-4 py-3 border-b border-rose-500/10 bg-rose-500/[0.02]">
               <div className="rounded border border-rose-500/30 bg-rose-500/10 p-3 text-[13px] text-rose-200">
@@ -233,6 +254,23 @@ export function ReviewFixesPanel({
                   <span className="text-lg">🚨</span> Regression Detected!
                 </div>
                 Your applied fix has introduced new syntax errors or bugs.
+                
+                <div className="mt-3 space-y-2">
+                  {backgroundValidationReport.newIssues.map((issue, idx) => (
+                    <div key={idx} className="rounded bg-rose-500/10 p-2 text-[12px] border border-rose-500/20">
+                      <span className="font-semibold">{issue.issue}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onRevalidate}
+                  disabled={isRevalidating}
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded bg-rose-500/20 px-3 py-2 text-[12px] font-medium text-rose-300 transition hover:bg-rose-500/30 disabled:opacity-50"
+                >
+                  {isRevalidating ? "Analyzing..." : "Generate Fixes for Regression"}
+                </button>
               </div>
             </div>
           )}
@@ -351,9 +389,9 @@ export function ReviewFixesPanel({
         </div>
       )}
 
-      {!collapsed && (findings.length > 0 || validationReport) ? (
+      {!collapsed && (findings.length > 0 || validationReport || createdPrData) ? (
         <div className="border-t border-white/8 px-4 py-3 flex flex-col gap-2">
-          {appliedFixes.size > 0 && (
+          {appliedFixes.size > 0 && !createdPrData && (
             <button
               type="button"
               onClick={onRevalidate}
@@ -373,7 +411,25 @@ export function ReviewFixesPanel({
               )}
             </button>
           )}
-          {validationReport && (
+
+          {/* Show PR Created badge if PR was opened for this review; otherwise show Create PR button */}
+          {createdPrData ? (
+            <div className="rounded-[4px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-center space-y-1.5">
+              <div className="flex items-center justify-center gap-1.5 text-[13px] font-semibold text-emerald-400">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Pull Request Created</span>
+              </div>
+              <a
+                href={createdPrData.prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[12px] font-medium text-sky-400 hover:underline"
+              >
+                <span>View PR on GitHub</span>
+                <ChevronRight className="h-3 w-3" />
+              </a>
+            </div>
+          ) : validationReport ? (
             <div className="relative group mt-1">
               <button
                 type="button"
@@ -401,9 +457,10 @@ export function ReviewFixesPanel({
                 </div>
               )}
             </div>
-          )}
+          ) : null}
+
           <div className="text-[11px] text-slate-400 text-center">
-            {validationReport ? "Merge validated fixes directly to GitHub." : appliedFixes.size > 0 ? "Revalidate fixes to ensure they didn't introduce new issues." : "Apply fixes individually or finalize after review."}
+            {createdPrData ? "PR opened on GitHub. Run a new analysis after pushing updates." : validationReport ? "Merge validated fixes directly to GitHub." : appliedFixes.size > 0 ? "Revalidate fixes to ensure they didn't introduce new issues." : "Apply fixes individually or finalize after review."}
           </div>
         </div>
       ) : null}

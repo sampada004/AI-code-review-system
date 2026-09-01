@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("loading");
@@ -18,10 +18,10 @@ export default function AuthCallbackPage() {
     if (error) {
       setStatus("error");
       setMessage(error || "Failed to authenticate with GitHub");
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         router.push("/login");
       }, 3000);
-      return;
+      return () => clearTimeout(timer);
     }
 
     if (token) {
@@ -29,9 +29,10 @@ export default function AuthCallbackPage() {
         window.localStorage.setItem("auth_token", token);
         setStatus("success");
         setMessage("Authentication successful! Redirecting...");
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           router.push("/dashboard");
         }, 1500);
+        return () => clearTimeout(timer);
       } catch (err) {
         setStatus("error");
         setMessage("Failed to save authentication token.");
@@ -39,9 +40,10 @@ export default function AuthCallbackPage() {
     } else {
       setStatus("error");
       setMessage("No authentication token received.");
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         router.push("/login");
       }, 3000);
+      return () => clearTimeout(timer);
     }
   }, [searchParams, router]);
 
@@ -74,5 +76,22 @@ export default function AuthCallbackPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="grid min-h-screen place-items-center bg-black text-slate-100">
+          <div className="flex items-center gap-3 text-sm text-slate-400">
+            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
+            Completing GitHub authentication...
+          </div>
+        </main>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

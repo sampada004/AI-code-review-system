@@ -59,10 +59,12 @@ export default function HistoryDetails({ reviewId }) {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const editorHostRef = useRef(null);
-  const editorInstanceRef = useRef(null);
+  const [latestReview, setLatestReview] = useState(null);
+  const [isDiffMode, setIsDiffMode] = useState(false);
   const [isFixesCollapsed, setIsFixesCollapsed] = useState(false);
   const [validationReport, setValidationReport] = useState(null);
+  const editorHostRef = useRef(null);
+  const editorInstanceRef = useRef(null);
 
   useEffect(() => {
     async function fetchReview() {
@@ -84,6 +86,8 @@ export default function HistoryDetails({ reviewId }) {
         }
 
         if (data.latestReview && data.latestReview.id !== data.review.id) {
+          setLatestReview(data.latestReview);
+          setIsDiffMode(true); // Default to diff mode if there's a difference
           const originalFindings = data.review.findings || [];
           const newFindings = data.latestReview.findings || [];
           
@@ -155,43 +159,91 @@ export default function HistoryDetails({ reviewId }) {
   useEffect(() => {
     if (!editorHostRef.current || !review) return;
 
-    const language = getLanguageFromFilename(review.file_path || review.title);
-
-    const uri = monaco.Uri.parse('inmemory://history-editor');
-    
-    let model = monaco.editor.getModel(uri);
-    if (!model) {
-      model = monaco.editor.createModel(review.source_code || "// No source code available", language, uri);
-    } else {
-      model.setValue(review.source_code || "// No source code available");
-      monaco.editor.setModelLanguage(model, language);
+    // Clear previous editor instance if any
+    if (editorInstanceRef.current) {
+      editorInstanceRef.current.dispose();
+      editorInstanceRef.current = null;
     }
 
-    editorInstanceRef.current = monaco.editor.create(editorHostRef.current, {
-      model: model,
-      theme: "vs-dark",
-      readOnly: true,
-      minimap: { enabled: true },
-      fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
-      padding: { top: 16, bottom: 16 },
-      scrollBeyondLastLine: false,
-      automaticLayout: true,
-      renderLineHighlight: "all",
-      lineNumbersMinChars: 3,
-      inlayHints: { enabled: "off" },
-      colorDecorators: false,
-      hover: { enabled: false },
-    });
+    const language = getLanguageFromFilename(review.file_path || review.title);
+
+    if (isDiffMode && latestReview) {
+      const originalUri = monaco.Uri.parse('inmemory://history-editor-original');
+      const modifiedUri = monaco.Uri.parse('inmemory://history-editor-modified');
+      
+      let originalModel = monaco.editor.getModel(originalUri);
+      if (!originalModel) {
+        originalModel = monaco.editor.createModel(review.source_code || "// No source code available", language, originalUri);
+      } else {
+        originalModel.setValue(review.source_code || "// No source code available");
+        monaco.editor.setModelLanguage(originalModel, language);
+      }
+
+      let modifiedModel = monaco.editor.getModel(modifiedUri);
+      if (!modifiedModel) {
+        modifiedModel = monaco.editor.createModel(latestReview.source_code || "// No source code available", language, modifiedUri);
+      } else {
+        modifiedModel.setValue(latestReview.source_code || "// No source code available");
+        monaco.editor.setModelLanguage(modifiedModel, language);
+      }
+
+      const diffEditor = monaco.editor.createDiffEditor(editorHostRef.current, {
+        theme: "vs-dark",
+        readOnly: true,
+        minimap: { enabled: false },
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+        padding: { top: 16, bottom: 16 },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        renderLineHighlight: "all",
+        lineNumbersMinChars: 3,
+        ignoreTrimWhitespace: false,
+      });
+
+      diffEditor.setModel({
+        original: originalModel,
+        modified: modifiedModel
+      });
+
+      editorInstanceRef.current = diffEditor;
+    } else {
+      const uri = monaco.Uri.parse('inmemory://history-editor');
+      
+      let model = monaco.editor.getModel(uri);
+      if (!model) {
+        model = monaco.editor.createModel(review.source_code || "// No source code available", language, uri);
+      } else {
+        model.setValue(review.source_code || "// No source code available");
+        monaco.editor.setModelLanguage(model, language);
+      }
+
+      editorInstanceRef.current = monaco.editor.create(editorHostRef.current, {
+        model: model,
+        theme: "vs-dark",
+        readOnly: true,
+        minimap: { enabled: true },
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+        padding: { top: 16, bottom: 16 },
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        renderLineHighlight: "all",
+        lineNumbersMinChars: 3,
+        inlayHints: { enabled: "off" },
+        colorDecorators: false,
+        hover: { enabled: false },
+      });
+    }
 
     return () => {
-      // Do NOT dispose model, just let it be reused next time.
-      // This permanently solves the web worker "Missing requestHandler" race conditions.
+      // Do not dispose models to reuse them, but dispose the editor instance
       if (editorInstanceRef.current) {
         editorInstanceRef.current.dispose();
+        editorInstanceRef.current = null;
       }
     };
-  }, [review]);
+  }, [review, isDiffMode, latestReview]);
 
   if (loading) {
     return (
@@ -243,6 +295,18 @@ export default function HistoryDetails({ reviewId }) {
           <div className="text-[12px] text-slate-400">
             {new Date(review.created_at).toLocaleString()}
           </div>
+          {latestReview && (
+            <button
+              onClick={() => setIsDiffMode(!isDiffMode)}
+              className={`px-3 py-1 rounded border text-[11px] font-medium transition-colors ${
+                isDiffMode 
+                  ? "border-sky-500/50 bg-sky-500/10 text-sky-400" 
+                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+              }`}
+            >
+              {isDiffMode ? "Viewing Diff (Original vs Latest)" : "View Diff"}
+            </button>
+          )}
           <div className="px-2 py-0.5 rounded border border-white/10 bg-white/5 text-[11px] font-medium text-slate-300">
             Read-Only
           </div>

@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, ExternalLink, Search, Filter, Clock, FileCode2, AlertCircle } from "lucide-react";
+import { ChevronRight, Clock, FileCode2, AlertCircle, AlertTriangle, CheckCircle2, Info, ShieldAlert, Wrench, History, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 function timeAgo(dateString) {
+  if (!dateString) return "Recently";
   const date = new Date(dateString);
   const now = new Date();
   const seconds = Math.floor((now - date) / 1000);
   
+  if (isNaN(seconds) || seconds < 0) return "Just now";
   if (seconds < 60) return `Just now`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -19,12 +21,25 @@ function timeAgo(dateString) {
   return date.toLocaleDateString();
 }
 
+const severityColors = {
+  high: "text-rose-300 bg-rose-950/40 border-rose-900/30",
+  medium: "text-amber-300 bg-amber-950/40 border-amber-900/30",
+  low: "text-sky-300 bg-sky-950/40 border-sky-900/30",
+  none: "text-emerald-300 bg-emerald-950/40 border-emerald-900/30",
+};
+
+const severityIcons = {
+  high: <AlertCircle className="w-3.5 h-3.5 text-rose-300" />,
+  medium: <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />,
+  low: <Info className="w-3.5 h-3.5 text-sky-300" />,
+  none: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />,
+};
+
 export default function RecentReviews() {
   const [reviews, setReviews] = useState([]);
   const [repositories, setRepositories] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [activeFilter, setActiveFilter] = useState("all");
 
   useEffect(() => {
     let mounted = true;
@@ -33,7 +48,6 @@ export default function RecentReviews() {
       try {
         const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
         const { apiUrl } = await import("@/lib/api");
-        
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
         const [reviewsRes, reposRes] = await Promise.all([
@@ -76,195 +90,225 @@ export default function RecentReviews() {
     };
   }, []);
 
-  const activeIssues = reviews.filter(r => ['PENDING', 'COMPLETED', 'FAILED'].includes(r.review_status)).length;
-  const prsCreated = reviews.filter(r => r.review_status === 'PR_CREATED').length;
+  // Filter ONLY files that need attention (exclude PR_CREATED, CLEAN, and resolved items)
+  const latestFilesMap = new Map();
+  reviews.forEach((r) => {
+    const sev = (r.overall_severity || "").toLowerCase();
+    const status = (r.review_status || "").toUpperCase();
+    
+    // Exclude PR_CREATED, CLEAN, and REVALIDATED reviews
+    const isDone = status === "PR_CREATED" || status === "CLEAN" || status === "REVALIDATED" || sev === "none";
+    const needsAttention = !isDone && (sev === "high" || sev === "medium" || sev === "low" || ["PENDING", "FAILED", "ACTION_REQUIRED"].includes(status));
 
-  const filteredReviews = reviews.filter(r => {
-    const searchString = `${r.file_path || ''} ${r.title || ''} ${r.ai_summary || ''}`.toLowerCase();
-    const matchesSearch = !searchQuery || searchString.includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "ALL" || r.review_status === statusFilter;
-    return matchesSearch && matchesStatus;
+    if (needsAttention) {
+      const key = `${r.repository_id || "local"}-${r.file_path || r.title}`;
+      if (!latestFilesMap.has(key)) {
+        latestFilesMap.set(key, r);
+      } else {
+        const existing = latestFilesMap.get(key);
+        if (new Date(r.created_at) > new Date(existing.created_at)) {
+          latestFilesMap.set(key, r);
+        }
+      }
+    }
   });
 
-  // Group by repository
-  const grouped = filteredReviews.reduce((acc, review) => {
-    const key = review.repository_id || "local";
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(review);
-    return acc;
-  }, {});
+  const actionableList = Array.from(latestFilesMap.values()).sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
 
-  const getSeverityBadge = (severity) => {
-    switch (severity?.toLowerCase()) {
-      case 'high':
-        return <span className="rounded bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-400 border border-rose-500/20">High</span>;
-      case 'medium':
-        return <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/20">Medium</span>;
-      case 'low':
-        return <span className="rounded bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-400 border border-sky-500/20">Low</span>;
-      default:
-        return null;
-    }
-  };
+  const highRiskCount = actionableList.filter(
+    (r) => (r.overall_severity || "").toLowerCase() === "high"
+  ).length;
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'CLEAN':
-        return <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">Clean</span>;
-      case 'REVALIDATED':
-        return <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">Revalidated</span>;
-      case 'PR_CREATED':
-        return <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-400">PR Created</span>;
-      case 'FAILED':
-        return <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">Failed</span>;
-      default:
-        return <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">Action Required</span>;
-    }
-  };
+  const medRiskCount = actionableList.filter(
+    (r) => (r.overall_severity || "").toLowerCase() === "medium"
+  ).length;
+
+  const filteredAlerts = actionableList.filter((r) => {
+    const sev = (r.overall_severity || "").toLowerCase();
+    if (activeFilter === "high") return sev === "high";
+    if (activeFilter === "medium") return sev === "medium";
+    return true;
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Summary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-[#2b313a] bg-[#161b22] p-5 shadow-sm hover:border-[#3b424d] transition-colors">
-          <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <FileCode2 className="h-4 w-4" /> Files Analyzed
+    <div className="rounded-md border border-white/10 bg-[#141821] p-4.5 space-y-4">
+      {/* Alert Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-rose-950/40 text-rose-300 border border-rose-900/30 shrink-0">
+            <ShieldAlert className="h-4 w-4" />
           </div>
-          <div className="mt-2 text-3xl font-light text-white">{reviews.length}</div>
+          <div>
+            <h2 className="text-[15px] font-semibold text-white tracking-tight flex items-center gap-2">
+              <span>Code Alerts & Pending Fixes</span>
+              {actionableList.length > 0 ? (
+                <span className="rounded-md bg-rose-950/50 border border-rose-900/40 px-2 py-0.5 text-[11px] font-medium text-rose-300">
+                  {actionableList.length} Action Needed
+                </span>
+              ) : (
+                <span className="rounded-md bg-emerald-950/50 border border-emerald-900/40 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                  All Clear
+                </span>
+              )}
+            </h2>
+            <p className="text-[12px] text-slate-400">
+              Files with detected bugs, security vulnerabilities, or failing code checks.
+            </p>
+          </div>
         </div>
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-5 shadow-sm">
-          <div className="text-[12px] font-medium text-amber-500/70 uppercase tracking-wider flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" /> Needs Attention
+
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Quick Filter Pills */}
+          <div className="flex rounded-md bg-[#0d1016] p-1 border border-white/5">
+            <button
+              onClick={() => setActiveFilter("all")}
+              className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+                activeFilter === "all"
+                  ? "bg-[#21262d] text-white"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              All ({actionableList.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter("high")}
+              className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+                activeFilter === "high"
+                  ? "bg-[#21262d] text-rose-300"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              High ({highRiskCount})
+            </button>
+            <button
+              onClick={() => setActiveFilter("medium")}
+              className={`rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+                activeFilter === "medium"
+                  ? "bg-[#21262d] text-amber-300"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Medium ({medRiskCount})
+            </button>
           </div>
-          <div className="mt-2 text-3xl font-light text-amber-400">{activeIssues}</div>
-        </div>
-        <div className="rounded-xl border border-[#2b313a] bg-[#161b22] p-5 shadow-sm hover:border-[#3b424d] transition-colors">
-          <div className="text-[12px] font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
-            <ExternalLink className="h-4 w-4" /> PRs Generated
-          </div>
-          <div className="mt-2 text-3xl font-light text-purple-400">{prsCreated}</div>
+
+          <Link
+            href="/history"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-slate-400 hover:text-sky-400 transition-colors px-3 py-1.5 rounded-md border border-white/5 bg-[#0d1016]"
+          >
+            <History className="h-3.5 w-3.5" />
+            History
+          </Link>
         </div>
       </div>
 
-      <section className="rounded-xl border border-[#2b313a] bg-[#161b22] p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <h3 className="font-serif text-[18px] font-semibold text-[#e7ebf2]">Review History</h3>
-          
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <input
-                type="text"
-                placeholder="Search reviews or summaries..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md border border-[#2b313a] bg-[#0d1117] pl-9 pr-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-            <div className="relative w-full sm:w-40">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full appearance-none rounded-md border border-[#2b313a] bg-[#0d1117] pl-9 pr-8 py-1.5 text-sm text-slate-200 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="COMPLETED">Action Required</option>
-                <option value="CLEAN">Clean</option>
-                <option value="REVALIDATED">Revalidated</option>
-                <option value="PR_CREATED">PR Created</option>
-              </select>
-              <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 rotate-90 pointer-events-none" />
-            </div>
-          </div>
+      {/* Main Alert List */}
+      {loading ? (
+        <div className="py-8 text-center text-[12px] text-slate-400">
+          Checking code health status...
         </div>
+      ) : filteredAlerts.length > 0 ? (
+        <div className="divide-y divide-white/5 border border-white/5 rounded-md overflow-hidden bg-[#0d1016]">
+          {filteredAlerts.map((r) => {
+            const repo =
+              r.repository_id === "local"
+                ? { repository_name: "Local Workspace" }
+                : repositories[r.repository_id];
+            const repoName = repo
+              ? repo.repository_name
+              : r.repository_id
+              ? `Repo #${r.repository_id}`
+              : "Workspace";
+            const sev = (r.overall_severity || "medium").toLowerCase();
+            const sevColor = severityColors[sev] || severityColors.medium;
+            const sevIcon = severityIcons[sev] || severityIcons.medium;
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12 text-[13px] text-slate-500">
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
-              <span className="animate-pulse">Loading review history...</span>
-            </div>
-          </div>
-        ) : filteredReviews.length > 0 ? (
-          <div className="space-y-6">
-            {Object.entries(grouped).map(([repoId, repoReviews]) => {
-              const repo = repoId === "local" ? { repository_name: "Local Workspace" } : repositories[repoId];
-              const repoName = repo ? repo.repository_name : `Repository #${repoId}`;
+            const filePath = r.file_path || r.title || "Unknown File";
+            const fileName = filePath.split("/").pop();
+            const dirPath = filePath.includes("/")
+              ? filePath.substring(0, filePath.lastIndexOf("/"))
+              : "";
 
-              return (
-                <div key={repoId} className="rounded-lg border border-[#2b313a] bg-[#0d1117] overflow-hidden">
-                  <div className="bg-[#161b22] px-4 py-3 border-b border-[#2b313a] flex items-center justify-between">
-                    <div className="text-sm font-semibold text-slate-200">{repoName}</div>
-                    <div className="text-[11px] font-medium text-slate-500 bg-[#2b313a] px-2 py-0.5 rounded-full">{repoReviews.length} session{repoReviews.length !== 1 ? 's' : ''}</div>
+            return (
+              <div
+                key={r.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 hover:bg-[#141821] transition-colors group"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="mt-0.5 p-1.5 rounded-md bg-[#141821] border border-white/5 text-sky-400 shrink-0">
+                    <FileCode2 className="h-4 w-4" />
                   </div>
-                  <ul className="divide-y divide-[#2b313a]">
-                    {repoReviews.map((r) => (
-                      <li key={r.id} className="flex flex-col p-4 transition-colors hover:bg-white/[0.02]">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3 mb-1">
-                              <span className="text-[15px] font-medium text-[#e8edf4] truncate">
-                                {r.file_path || r.title || 'Unknown File'}
-                              </span>
-                              {getSeverityBadge(r.overall_severity)}
-                              {getStatusBadge(r.review_status)}
-                            </div>
-                            
-                            {r.ai_summary && (
-                              <p className="text-[13px] text-slate-400 mt-2 line-clamp-2 leading-relaxed">
-                                {r.ai_summary}
-                              </p>
-                            )}
-                            
-                            <div className="mt-3 flex items-center gap-4 text-[11px] text-slate-500 font-medium">
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="h-3.5 w-3.5" />
-                                {timeAgo(r.updated_at || r.created_at)}
-                              </div>
-                              {r.pr_url && (
-                                <a href={r.pr_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-purple-400 hover:text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full">
-                                  <ExternalLink className="h-3 w-3" />
-                                  PR #{r.pr_number}
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="shrink-0 flex items-center">
-                            {r.repository_id && r.file_path ? (
-                              <Link 
-                                href={`/dashboard?repoId=${r.repository_id}&file=${encodeURIComponent(r.file_path)}`} 
-                                className="group flex items-center justify-center gap-2 rounded-md bg-[#2b313a] hover:bg-sky-500 px-4 py-2 text-[12px] font-medium text-slate-300 hover:text-white transition-all duration-200 shadow-sm"
-                              >
-                                Resume Review
-                                <ChevronRight className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-                              </Link>
-                            ) : null}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-[14px] text-slate-200 group-hover:text-white transition-colors truncate">
+                        {fileName}
+                      </span>
+                      <span className="bg-[#21262d] text-slate-400 text-[11px] font-medium px-2 py-0.5 rounded border border-white/5">
+                        {repoName}
+                      </span>
+                      <div
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wider ${sevColor}`}
+                      >
+                        {sevIcon}
+                        {sev}
+                      </div>
+                    </div>
+
+                    {dirPath ? (
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{dirPath}</p>
+                    ) : null}
+
+                    {r.ai_summary ? (
+                      <p className="text-[12px] text-slate-400 line-clamp-1 mt-1 bg-[#141821] px-2.5 py-1 rounded border border-white/5">
+                        {r.ai_summary}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-              );
-            })}
+
+                <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-white/5">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+                    <Clock className="h-3.5 w-3.5" />
+                    {timeAgo(r.updated_at || r.created_at)}
+                  </div>
+
+                  <Link
+                    href={
+                      r.repository_id
+                        ? `/reviews?repoId=${r.repository_id}&file=${encodeURIComponent(
+                            filePath
+                          )}&reviewId=${r.id}&autoAnalyze=true`
+                        : "/reviews"
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-md bg-sky-500/10 hover:bg-sky-500 border border-sky-500/20 hover:border-sky-400 px-3 py-1.5 text-[12px] font-medium text-sky-400 hover:text-white transition-all group/btn"
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    Fix Issue
+                    <ArrowRight className="h-3.5 w-3.5 opacity-70 group-hover/btn:translate-x-0.5 transition-transform" />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-10 text-center bg-[#0d1016] rounded-md border border-white/5 p-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-950/40 text-emerald-300 border border-emerald-900/30 mb-2">
+            <CheckCircle2 className="h-5 w-5" />
           </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center bg-[#0d1117] rounded-lg border border-dashed border-[#2b313a]">
-            <div className="grid h-16 w-16 place-items-center rounded-full bg-[#161b22] text-slate-500 shadow-inner mb-4">
-              <FileCode2 className="h-8 w-8" />
-            </div>
-            <p className="text-[15px] font-medium text-slate-300">No matching reviews found</p>
-            <p className="mt-1.5 text-[13px] text-slate-500 max-w-sm">
-              {searchQuery || statusFilter !== "ALL" 
-                ? "Try adjusting your search query or status filters to find what you're looking for."
-                : "Head over to the Review Workspace and select a repository to analyze some code."}
-            </p>
-          </div>
-        )}
-      </section>
+          <h4 className="text-[14px] font-semibold text-slate-100">All Codebases Operating Cleanly</h4>
+          <p className="mt-0.5 text-[12px] text-slate-400 max-w-sm">
+            No active security vulnerabilities or critical code bugs detected.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
+
+
+
+

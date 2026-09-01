@@ -3,8 +3,10 @@
 import { useRef, useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import Editor from "@monaco-editor/react";
 
-const editorValue = `// Paste your source code here to begin analysis...
-`;
+function snippetLinesCount(str) {
+  if (!str) return 1;
+  return str.split(/\r\n|\r|\n/).length;
+}
 
 export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   analysisState = "idle",
@@ -49,17 +51,39 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
       const currentRange = ranges[idx];
       const finding = findingsRef.current[idx];
       
-      if (currentRange && finding && finding.fixedCode) {
-        let targetRange = currentRange;
+      if (finding && finding.fixedCode) {
         const model = editor.getModel();
-        
-        // Attempt to find the exact snippet in the code to ensure we replace the right text
-        if (model && finding.originalCodeSnippet) {
-          // Normalize line endings to try and get a match
-          const searchStr = finding.originalCodeSnippet;
-          const matches = model.findMatches(searchStr, false, false, false, null, false);
+        if (!model) return;
+
+        let targetRange = currentRange;
+
+        // Intelligent Range Resolution
+        if (finding.originalCodeSnippet) {
+          const rawSnippet = finding.originalCodeSnippet.trim();
+          const matches = model.findMatches(rawSnippet, false, false, false, null, false);
           if (matches && matches.length > 0) {
             targetRange = matches[0].range;
+          } else {
+            // Line-ending normalized search
+            const normalizedSnippet = rawSnippet.replace(/\r\n/g, '\n');
+            const fullText = model.getValue();
+            const normalizedFullText = fullText.replace(/\r\n/g, '\n');
+            const foundIdx = normalizedFullText.indexOf(normalizedSnippet);
+            
+            if (foundIdx !== -1) {
+              const textBefore = normalizedFullText.substring(0, foundIdx);
+              const startLine = textBefore.split('\n').length;
+              const snippetLineCount = normalizedSnippet.split('\n').length;
+              const endLine = startLine + snippetLineCount - 1;
+              const endCol = model.getLineMaxColumn(endLine);
+              targetRange = new monacoInstanceRef.current.Range(startLine, 1, endLine, endCol);
+            } else if (finding.lineNumber) {
+              // Fallback to line number range
+              const line = finding.lineNumber;
+              const lineCount = snippetLinesCount(finding.originalCodeSnippet);
+              const endLine = Math.min(line + lineCount - 1, model.getLineCount());
+              targetRange = new monacoInstanceRef.current.Range(line, 1, endLine, model.getLineMaxColumn(endLine));
+            }
           }
         }
 
@@ -77,13 +101,12 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
       const currentRange = ranges[idx];
       const finding = findingsRef.current[idx];
       
-      if (currentRange && finding && finding.originalCodeSnippet !== undefined) {
+      if (finding && finding.originalCodeSnippet !== undefined) {
         let targetRange = currentRange;
         const model = editor.getModel();
         
-        // When undoing, we need to find the fixedCode we just inserted to replace it back
         if (model && finding.fixedCode) {
-          const searchStr = finding.fixedCode.replace(/[\r\n]+$/, '');
+          const searchStr = finding.fixedCode.trim();
           const matches = model.findMatches(searchStr, false, false, false, null, false);
           if (matches && matches.length > 0) {
             targetRange = matches[0].range;
@@ -92,6 +115,25 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
 
         const cleanText = (finding.originalCodeSnippet || "").replace(/[\r\n]+$/, '');
         editor.executeEdits("ai-undo", [{
+          range: targetRange,
+          text: cleanText
+        }]);
+      }
+    },
+    applySnippetFix: ({ originalCodeSnippet, fixedCode }) => {
+      const editor = editorInstanceRef.current;
+      if (!editor || !originalCodeSnippet || !fixedCode) return;
+      
+      const model = editor.getModel();
+      if (!model) return;
+      
+      const searchStr = originalCodeSnippet.trim();
+      const matches = model.findMatches(searchStr, false, false, false, null, false);
+      
+      if (matches && matches.length > 0) {
+        const targetRange = matches[0].range;
+        const cleanText = fixedCode.replace(/[\r\n]+$/, '');
+        editor.executeEdits("ai-auto-fix", [{
           range: targetRange,
           text: cleanText
         }]);
@@ -268,25 +310,36 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   };
 
   return (
-    <section className="flex h-full min-h-[calc(100vh-180px)] flex-col overflow-hidden rounded-[2px] border border-[#3a404b] bg-[#11151c] shadow-[0_16px_44px_rgba(0,0,0,0.35)]">
-      <div className="flex items-center justify-between border-b border-[#2f3540] bg-[#171c24] px-4 py-3 text-[12px] text-slate-300">
-          <div className="flex items-center gap-3">
-          <div>
-            <div className="text-[13px] font-medium text-[#e8edf4]">{repoName || "Repository"}</div>
-            <div className="text-[12px] text-slate-400">{repoBranch ? `branch: ${repoBranch}` : null}</div>
+    <section className="flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#141821] shadow-xl">
+      <div className="flex items-center justify-between border-b border-white/10 bg-[#181d28] px-4 py-2.5 text-[12px] text-slate-300">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 font-semibold text-slate-200 truncate">
+            <span className="text-sky-400">{repoName || "Repository"}</span>
+            {repoBranch ? (
+              <span className="rounded bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 text-[10px] font-mono text-sky-400">
+                {repoBranch}
+              </span>
+            ) : null}
+            <span className="text-slate-500">/</span>
+            <span className="text-white font-mono text-[13px]">{fileName}</span>
           </div>
-          <div className="ml-4 text-[13px] font-medium text-slate-300">{fileName}</div>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-3 shrink-0">
+          {analysisState === "error" && statusMessage && (
+            <span className="text-[12px] font-medium text-rose-400">
+              {statusMessage}
+            </span>
+          )}
           <button
             type="button"
             onClick={handleAnalyzeClick}
             disabled={analysisState === "analyzing"}
-            className="ml-2 rounded-[4px] border border-white/10 bg-sky-600 px-2 py-1 text-[12px] font-medium text-white transition disabled:opacity-60 disabled:cursor-not-allowed hover:bg-sky-500"
+            className="inline-flex items-center gap-1.5 rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-1.5 text-[12px] font-semibold text-slate-950 transition-all shadow-md shadow-sky-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {analysisState === "analyzing" ? (
               <span className="flex items-center gap-2">
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <svg className="h-4 w-4 animate-spin text-slate-950" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
                   <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
                 </svg>

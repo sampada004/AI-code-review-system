@@ -12,6 +12,7 @@ import { ReviewBottomBar } from "./review-bottom-bar";
 import { ReviewFixesPanel } from "./review-fixes-panel";
 import { ReviewFileExplorer } from "./review-file-explorer";
 import { fetchRepositoryData } from "./review-data";
+import { PRSuccessModal } from "./pr-success-modal";
 import { apiUrl } from "@/lib/api";
 
 const STORAGE_KEYS = {
@@ -108,6 +109,8 @@ export function ReviewWorkspace() {
   const [isRevalidating, setIsRevalidating] = useState(false);
   const [isBackgroundValidating, setIsBackgroundValidating] = useState(false);
   const [isCreatingPR, setIsCreatingPR] = useState(false);
+  const [createdPrData, setCreatedPrData] = useState(null);
+  const [isPRModalOpen, setIsPRModalOpen] = useState(false);
   
   // Repository State
   const searchParams = useSearchParams();
@@ -115,6 +118,8 @@ export function ReviewWorkspace() {
   const repoName = searchParams?.get("name") || "Select a repository";
   const repoBranch = searchParams?.get("branch") || "main";
   const repoUrl = searchParams?.get("url") || "";
+  const paramReviewId = searchParams?.get("reviewId");
+  const paramAutoAnalyze = searchParams?.get("autoAnalyze");
 
   useEffect(() => {
     if (repoId && typeof window !== "undefined") {
@@ -246,6 +251,48 @@ export function ReviewWorkspace() {
       window.removeEventListener("pointerup", handlePointerUp);
     };
   }, [isResizing]);
+
+  // Direct "Fix Issue" Navigation & Auto-Focus
+  useEffect(() => {
+    if (!selectedFileName || !selectedFileContent || selectedFileContent.startsWith("// Fetching")) return;
+    
+    let isMounted = true;
+    if (paramReviewId) {
+      let token = null;
+      try { token = window.localStorage.getItem("auth_token"); } catch(e) {}
+      
+      fetch(apiUrl(`/reviews/${paramReviewId}`), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (!isMounted) return;
+          if (data.success && data.review && data.review.findings && data.review.findings.length > 0) {
+            setOriginalReview(data.review);
+            setFindings(data.review.findings);
+            setAnalysisSummary(data.review.summary || "Review findings loaded for file.");
+            setOverallSeverity(data.review.overall_severity || "high");
+            setAnalysisState("completed");
+            setIsFixesCollapsed(false);
+            setSelectedFindingIndex(0);
+          } else if (paramAutoAnalyze === "true" && analysisState === "idle") {
+            const ext = selectedFileName.split(".").pop()?.toLowerCase();
+            handleAnalyze({ sourceCode: selectedFileContent, language: ext });
+          }
+        })
+        .catch(() => {
+          if (isMounted && paramAutoAnalyze === "true" && analysisState === "idle") {
+            const ext = selectedFileName.split(".").pop()?.toLowerCase();
+            handleAnalyze({ sourceCode: selectedFileContent, language: ext });
+          }
+        });
+    } else if (paramAutoAnalyze === "true" && analysisState === "idle") {
+      const ext = selectedFileName.split(".").pop()?.toLowerCase();
+      handleAnalyze({ sourceCode: selectedFileContent, language: ext });
+    }
+
+    return () => { isMounted = false; };
+  }, [paramReviewId, paramAutoAnalyze, selectedFileName, selectedFileContent]);
 
   useEffect(() => {
     if (!isExplorerResizing) {
@@ -398,7 +445,9 @@ export function ReviewWorkspace() {
     setAppliedFixes(new Set());
     setOriginalReview(null);
     setValidationReport(null);
-    
+    setCreatedPrData(null);
+    setIsPRModalOpen(false);
+
     const existingContent = repoFiles[name];
     if (existingContent && !existingContent.startsWith("/* \n * File:")) {
       setSelectedFileContent(existingContent);
@@ -475,6 +524,10 @@ export function ReviewWorkspace() {
       setAnalysisState("analyzing");
       setFindings([]); // Clear findings to reset editor decorations
       setValidationReport(null);
+      if (!isRevalidation) {
+        setCreatedPrData(null);
+        setIsPRModalOpen(false);
+      }
       if (isRevalidation) setIsRevalidating(true);
       // ensure panel is hidden during analysis
       setIsFixesCollapsed(true);
@@ -676,7 +729,12 @@ export function ReviewWorkspace() {
         throw new Error(data.message || "Failed to create Pull Request");
       }
 
-      alert(`Pull Request created successfully!\\n\\nURL: ${data.pullRequest.prUrl}\\nBranch: ${data.pullRequest.branchName}`);
+      const prData = {
+        prUrl: data.pullRequest?.prUrl || data.pullRequest?.url || "#",
+        branchName: data.pullRequest?.branchName || repoBranch
+      };
+      setCreatedPrData(prData);
+      setIsPRModalOpen(true);
     } catch (err) {
       alert("Error creating Pull Request: " + err.message);
     } finally {
@@ -754,8 +812,8 @@ export function ReviewWorkspace() {
             </div>
           ) : null}
 
-          <div className="flex-1 min-w-0 p-4 sm:p-6 overflow-y-auto">
-            <div ref={workspaceRef} className="mx-auto max-w-full h-full flex flex-col">
+          <div className="flex-1 min-w-0 h-full p-3 overflow-hidden">
+            <div ref={workspaceRef} className="mx-auto max-w-full h-full flex flex-col min-h-0">
               
               {!repoId ? (
                 <div className="flex flex-1 items-center justify-center border border-dashed border-white/10 rounded-xl bg-white/5">
@@ -781,8 +839,8 @@ export function ReviewWorkspace() {
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-1 min-h-[calc(100vh-180px)] gap-4 flex-col xl:flex-row">
-                    <div className="relative min-w-0 min-h-0 transition-[flex-basis,width] duration-300 ease-out" style={editorStyle}>
+                  <div className="flex flex-1 h-full min-h-0 gap-3">
+                    <div className="relative min-w-0 h-full flex-1 transition-[flex-basis,width] duration-300 ease-out" style={editorStyle}>
                       <EditorPlaceholder
                         ref={editorRef}
                         analysisState={analysisState}
@@ -837,6 +895,7 @@ export function ReviewWorkspace() {
                       originalReview={originalReview}
                       onCreatePullRequest={handleCreatePullRequest}
                       isCreatingPR={isCreatingPR}
+                      createdPrData={createdPrData}
                     />
                     </div>
                   ) : null}
@@ -855,6 +914,15 @@ export function ReviewWorkspace() {
           </div>
         </main>
       </div>
+
+      <PRSuccessModal
+        isOpen={isPRModalOpen}
+        onClose={() => setIsPRModalOpen(false)}
+        prUrl={createdPrData?.prUrl}
+        branchName={createdPrData?.branchName}
+        repoName={repoName}
+        fileName={selectedFileName}
+      />
     </div>
   );
 }

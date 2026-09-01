@@ -1,209 +1,200 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import GitHubIcon from "@/components/common/github-icon";
 import { apiUrl } from "@/lib/api";
+import { 
+  ShieldCheck, 
+  Zap, 
+  GitPullRequest, 
+  ArrowRight, 
+  Lock, 
+  CheckCircle2,
+  AlertCircle
+} from "lucide-react";
 
-const highlights = [
-  "AI review suggestions in under 90 seconds",
-  "Security and performance checks in every PR",
-  "Works with your existing GitHub workflow",
+const features = [
+  {
+    icon: Zap,
+    title: "Instant Code Analysis",
+    description: "Deep semantic and AST reviews generated within seconds of creating a PR."
+  },
+  {
+    icon: ShieldCheck,
+    title: "Automated Security Audits",
+    description: "Detect OWASP vulnerabilities, secret leaks, and logic flaws before merge."
+  },
+  {
+    icon: GitPullRequest,
+    title: "1-Click AI Fix Recommendations",
+    description: "Get verified refactoring patches and line-by-line actionable comments."
+  }
 ];
 
 function LoginPageContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const redirectTo = searchParams.get("next") || "/dashboard";
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const errorParam = searchParams.get("error");
+  const errorMessage = errorParam ? decodeURIComponent(errorParam) : "";
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setLoading(true);
-    setMessage("");
-    setError("");
-
-    const formData = new FormData(event.currentTarget);
-    const payload = {
-      email: formData.get("email"),
-      password: formData.get("password"),
-    };
-
-    try {
-      const response = await fetch(apiUrl("/auth/login"), {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Login failed");
-      }
-
-      // persist token for client-side API calls (backend also sets httpOnly cookie)
-      try {
-        if (typeof window !== "undefined" && data?.token) {
-          window.localStorage.setItem("auth_token", data.token);
-        }
-      } catch {
-        // ignore storage errors
-      }
-
-      setMessage("Login successful. Redirecting...");
-      router.replace(redirectTo);
-    } catch (loginError) {
-      setError(loginError.message);
-    } finally {
-      setLoading(false);
-    }
+  const handleGitHubLogin = () => {
+    setIsRedirecting(true);
+    window.location.href = apiUrl("/auth/github/login");
   };
 
   return (
-    <main className="relative flex h-screen flex-col overflow-hidden bg-black text-slate-100">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(37,99,235,0.25),transparent_35%),radial-gradient(circle_at_85%_90%,rgba(14,165,233,0.15),transparent_35%)]" />
+    <main className="relative min-h-screen flex flex-col justify-between overflow-hidden bg-slate-950 text-slate-100 selection:bg-sky-500/30 selection:text-sky-200">
+      {/* Dynamic ambient lighting & grid */}
+      <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-25" />
+      <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-sky-500/15 via-blue-600/10 to-transparent blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 rounded-full bg-indigo-600/10 blur-[100px]" />
 
       <Navbar isAuthPage hideSignIn />
 
-      <section className="relative flex flex-1 items-center justify-center px-4 py-6 sm:px-6">
-        <div className="grid w-full max-w-5xl items-stretch gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <aside className="hidden p-2 lg:flex lg:flex-col lg:justify-between">
+      <section className="relative flex flex-1 items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid w-full max-w-5xl items-center gap-10 lg:grid-cols-12">
+          
+          {/* Left info column */}
+          <div className="lg:col-span-7 space-y-8">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-200">CodeReview AI</p>
-              <h2 className="mt-3 text-3xl font-semibold leading-tight text-white">
-                Build faster with AI-powered code confidence.
-              </h2>
-              <p className="mt-4 text-sm leading-relaxed text-slate-300">
-                Join engineering teams shipping safer, cleaner code through intelligent reviews and actionable
-                feedback.
+              <div className="badge-glow mb-4">
+                <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-sky-300">
+                  Developer-First Authentication
+                </span>
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.15]">
+                Ship flawless code with <span className="bg-gradient-to-r from-sky-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">AI intelligence</span>
+              </h1>
+              <p className="mt-4 text-base text-slate-300 leading-relaxed max-w-xl">
+                Connect your GitHub account to supercharge your pull requests with autonomous code reviews, security scans, and instant fix suggestions.
               </p>
             </div>
 
-            <ul className="mt-6 space-y-3">
-              {highlights.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-start gap-3 rounded-xl border border-white/10 bg-slate-900/45 px-3 py-2.5"
-                >
-                  <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-sky-300" />
-                  <span className="text-sm text-slate-200">{item}</span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-6 grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-white/10 bg-slate-900/45 px-3 py-2 text-center">
-                <p className="text-lg font-semibold text-white">2M+</p>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Developers</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-slate-900/45 px-3 py-2 text-center">
-                <p className="text-lg font-semibold text-white">99.9%</p>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Uptime</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-slate-900/45 px-3 py-2 text-center">
-                <p className="text-lg font-semibold text-white">SOC 2</p>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Secure</p>
-              </div>
-            </div>
-          </aside>
-
-          <div className="w-full rounded-2xl border border-white/12 bg-slate-900/65 p-6 shadow-[0_24px_60px_rgba(2,6,23,0.6)] backdrop-blur-xl sm:p-7">
-            <div className="mb-6">
-              <h1 className="text-2xl font-semibold tracking-tight text-white">Sign in to CodeReview AI</h1>
-              <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                Continue building with your developer workspace.
-              </p>
+            {/* Feature items */}
+            <div className="space-y-4 pt-2">
+              {features.map((item, idx) => {
+                const IconComponent = item.icon;
+                return (
+                  <div 
+                    key={idx} 
+                    className="flex items-start gap-4 rounded-2xl border border-white/5 bg-slate-900/40 p-3.5 backdrop-blur-md transition hover:border-white/10 hover:bg-slate-900/70"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-400">
+                      <IconComponent className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-white">{item.title}</h3>
+                      <p className="mt-0.5 text-xs text-slate-400 leading-relaxed">{item.description}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            <button
-              type="button"
-              onClick={() => { window.location.href = apiUrl("/auth/github/login"); }}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-600/70 bg-slate-800/80 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-700/80"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <path d="M9 19c-4 1.5-4-2-6-2m12 4v-3.9a3.3 3.3 0 0 0-.9-2.6c3-.3 6.2-1.5 6.2-6.7a5.2 5.2 0 0 0-1.4-3.6 4.8 4.8 0 0 0-.1-3.5s-1.1-.3-3.7 1.4a13 13 0 0 0-6.8 0C5.7.7 4.6 1 4.6 1a4.8 4.8 0 0 0-.1 3.5 5.2 5.2 0 0 0-1.4 3.6c0 5.2 3.2 6.4 6.2 6.7a3.3 3.3 0 0 0-.9 2.6V21" />
-              </svg>
-              Continue with GitHub
-            </button>
-
-            <div className="my-5 flex items-center gap-3 text-[11px] font-semibold tracking-[0.18em] text-slate-400">
-              <div className="h-px flex-1 bg-white/15" />
-              <span>OR</span>
-              <div className="h-px flex-1 bg-white/15" />
-            </div>
-
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">Email</span>
-                <input
-                  type="email"
-                  name="email"
-                  defaultValue="dev@codepilot.ai"
-                  className="h-11 w-full rounded-lg border border-[#32496f] bg-[#131a27] px-3 text-sm text-slate-100 outline-none transition focus:border-[#4f7bc3]"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-300">Password</span>
-                <div className="flex h-11 items-center rounded-lg border border-[#32496f] bg-[#131a27] px-3">
-                  <input
-                    type="password"
-                    name="password"
-                    defaultValue="password"
-                    className="w-full bg-transparent text-sm text-slate-100 outline-none"
-                  />
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                </div>
-              </label>
-
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="h-4 w-4 rounded border border-[#3f5578] bg-[#111827]" />
-                  Remember me
-                </label>
-                <a href="#" className="text-sky-300 transition hover:text-sky-200">
-                  Forgot password?
-                </a>
+            {/* Trust metrics */}
+            <div className="flex items-center gap-6 pt-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <span>Zero Password Hassles</span>
               </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn-primary mt-1 flex h-11 w-full items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {loading ? "Signing In..." : "Sign In"}
-              </button>
-            </form>
-
-            {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
-            {message ? <p className="mt-3 text-sm text-emerald-300">{message}</p> : null}
-
-            <p className="mt-4 text-center text-xs text-slate-400">
-              New here? <a href="/register" className="font-medium text-sky-300 hover:text-sky-200">Create account</a>
-            </p>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <span>Standard GitHub OAuth 2.0</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                <span>Instant Setup</span>
+              </div>
+            </div>
           </div>
+
+          {/* Right login card */}
+          <div className="lg:col-span-5">
+            <div className="relative rounded-3xl border border-white/15 bg-gradient-to-b from-slate-900/90 via-slate-900/80 to-slate-950/95 p-7 sm:p-8 shadow-[0_20px_60px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
+              <div className="pointer-events-none absolute -top-12 -right-12 h-36 w-36 rounded-full bg-sky-500/20 blur-2xl" />
+              
+              <div className="text-center mb-8">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-slate-800/80 shadow-inner">
+                  <GitHubIcon className="h-7 w-7 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight text-white">Sign In to CodeReview AI</h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  Authenticate securely using your GitHub developer credentials.
+                </p>
+              </div>
+
+              {errorMessage && (
+                <div className="mb-6 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-300">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={handleGitHubLogin}
+                  disabled={isRedirecting}
+                  className="group relative flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-sky-400/40 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 px-5 text-sm font-semibold text-white shadow-lg shadow-sky-500/25 transition-all duration-300 hover:border-sky-300 hover:shadow-sky-500/40 hover:brightness-110 active:translate-y-0.5 disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  <GitHubIcon className="h-5 w-5 transition-transform group-hover:scale-110" />
+                  <span>{isRedirecting ? "Connecting to GitHub..." : "Continue with GitHub"}</span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </button>
+
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 text-left">
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                    <Lock className="h-3.5 w-3.5 text-sky-400" />
+                    <span>OAuth Permissions & Security</span>
+                  </div>
+                  <ul className="mt-2 space-y-1.5 text-[11px] text-slate-400">
+                    <li className="flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-slate-500" />
+                      <span>Read profile info & verified email</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-slate-500" />
+                      <span>Read access to repositories you select</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="h-1 w-1 rounded-full bg-slate-500" />
+                      <span>Encrypted token storage with zero password exposure</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <p className="mt-6 text-center text-[11px] text-slate-500">
+                By continuing, you agree to CodeReview AI&apos;s{" "}
+                <a href="#" className="text-slate-400 hover:text-sky-400 transition underline underline-offset-2">Terms</a> and{" "}
+                <a href="#" className="text-slate-400 hover:text-sky-400 transition underline underline-offset-2">Privacy Policy</a>.
+              </p>
+            </div>
+          </div>
+
         </div>
       </section>
+
+      {/* Subtle bottom bar */}
+      <div className="relative border-t border-white/5 py-4 text-center text-xs text-slate-500">
+        <p>© 2026 CodeReview AI. Built for GitHub Developers.</p>
+      </div>
     </main>
   );
-};
+}
 
 export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <main className="grid min-h-screen place-items-center bg-black text-slate-100">
-          <div className="text-sm text-slate-400">Loading sign in...</div>
+        <main className="grid min-h-screen place-items-center bg-slate-950 text-slate-100">
+          <div className="flex items-center gap-3 text-sm text-slate-400">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+            Loading authentication portal...
+          </div>
         </main>
       }
     >

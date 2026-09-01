@@ -1,16 +1,9 @@
 "use client";
 
-import { Menu } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { apiUrl } from "@/lib/api";
-import {
-  BellIcon,
-  HelpIcon,
-  KbdIcon,
-  SearchIcon,
-  UserIcon,
-} from "./dashboard-icons";
 
 export function DashboardTopbar({
   onToggleSidebar,
@@ -42,41 +35,36 @@ export function DashboardTopbar({
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-white/8 bg-[#141821]/95 backdrop-blur">
-      <div className="flex flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        <div className="flex items-center flex-1 max-w-2xl">
-          <div className="relative flex min-w-0 flex-1 items-center">
-            <div className="pointer-events-none absolute left-3 text-slate-500">
-              <SearchIcon className="h-4 w-4" />
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0d1117]/90 backdrop-blur-md">
+      <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center flex-1 max-w-sm">
+          <div className="relative w-full">
+            <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+              <Search className="h-4 w-4" />
             </div>
             <input
               type="text"
-              aria-label="Search repositories or scans"
-              placeholder="Search repositories or scans..."
-              className="h-10 w-full rounded-[4px] border border-white/12 bg-[#0d1016] pl-10 pr-24 text-[13px] text-slate-200 placeholder:text-slate-500 shadow-[0_1px_0_rgba(255,255,255,0.03)] outline-none transition focus:border-sky-400/40 focus:ring-2 focus:ring-sky-500/10"
+              aria-label="Search repositories"
+              placeholder="Search..."
+              className="h-8.5 w-full rounded-lg border border-white/10 bg-[#161b22] pl-9 pr-3 text-[13px] text-slate-200 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20"
             />
-            <div className="absolute right-2 flex items-center gap-1.5">
-              <span className="grid h-7 w-7 place-items-center rounded border border-white/10 bg-white/5 text-slate-400">
-                <KbdIcon className="h-3.5 w-3.5" />
-              </span>
-              <span className="grid h-7 min-w-7 place-items-center rounded border border-white/10 bg-white/5 px-2 text-[11px] font-medium text-slate-300">
-                K
-              </span>
-            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="rounded-[6px] border border-white/10 bg-[#161b22] px-4 py-1.5 text-[13px] font-medium text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#161b22] px-3 py-1.5 text-[12px] font-medium text-slate-300 transition hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/30 disabled:opacity-60"
           >
-            {isLoggingOut ? "Logging out..." : "Logout"}
+            <LogOut className="h-3.5 w-3.5" />
+            <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
           </button>
         </div>
       </div>
     </header>
   );
 }
+
+

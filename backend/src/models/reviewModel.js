@@ -87,7 +87,7 @@ async function getReviewById(id) {
 
 async function getReviewsByUserId(
   userId,
-  { limit = 50, offset = 0 } = {}
+  { limit = 200, offset = 0 } = {}
 ) {
   const [rows] = await pool.query(
     `SELECT
@@ -107,7 +107,7 @@ async function getReviewsByUserId(
       r.pr_url,
       r.pr_number
     FROM reviews r
-    WHERE r.user_id = ? AND r.parent_review_id IS NULL
+    WHERE r.user_id = ?
     ORDER BY r.created_at DESC
     LIMIT ? OFFSET ?`,
     [userId, Number(limit), Number(offset)]

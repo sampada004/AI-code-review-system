@@ -32,7 +32,7 @@ export default function AddRepositoryPage() {
                   <aside className="lg:col-span-1">
                     <div className="rounded-md border border-[#38404d] bg-[#161a22] px-5 py-4">
                       <h4 className="font-medium text-[#e7ebf2]">Tips</h4>
-                      <p className="mt-2 text-[13px] text-slate-300">Enter repository URL or owner/repo. We'll store it for future reviews.</p>
+                      <p className="mt-2 text-[13px] text-slate-300">Enter repository URL or owner/repo. We&apos;ll store it for future reviews.</p>
                     </div>
                   </aside>
                 </div>
