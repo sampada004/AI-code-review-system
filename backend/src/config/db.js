@@ -28,8 +28,16 @@ const resolvedConfig = {
   port: getEnv("DB_PORT") ? Number(getEnv("DB_PORT")) : undefined,
   user: getEnv("DB_USER"),
   password: getEnv("DB_PASSWORD"),
-  database: getEnv("DB_NAME"),
+  database: getEnv("DB_NAME") || "test",
 };
+
+const useSsl = getEnv("DB_SSL") === "true" || (resolvedConfig.host && resolvedConfig.host.includes("tidbcloud.com"));
+if (useSsl) {
+  resolvedConfig.ssl = {
+    minVersion: "TLSv1.2",
+    rejectUnauthorized: true,
+  };
+}
 
 // Mask password for logs
 const safeLogConfig = Object.assign({}, resolvedConfig, {
