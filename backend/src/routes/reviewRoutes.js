@@ -11,6 +11,7 @@ router.get("/test", (req, res) => {
 router.post("/", authMiddleware, reviewController.submitReview);
 router.post("/analyze", authMiddleware, reviewController.analyzeCode);
 
+router.get("/latest", authMiddleware, reviewController.getLatestReviewForFile);
 router.get("/", authMiddleware, reviewController.getUserReviews);
 
 router.get("/:id", authMiddleware, reviewController.getReview);

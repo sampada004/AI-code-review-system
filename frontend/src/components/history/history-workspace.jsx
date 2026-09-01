@@ -39,9 +39,31 @@ export default function HistoryWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   
-  const [searchQuery, setSearchQuery] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("inspectra.history.search") || "";
+    }
+    return "";
+  });
+  const [severityFilter, setSeverityFilter] = useState(() => {
+    if (typeof window !== "undefined") {
+      return sessionStorage.getItem("inspectra.history.severity") || "all";
+    }
+    return "all";
+  });
   const [repositories, setRepositories] = useState({});
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("inspectra.history.search", searchQuery);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("inspectra.history.severity", severityFilter);
+    }
+  }, [severityFilter]);
 
   useEffect(() => {
     async function fetchReviews() {

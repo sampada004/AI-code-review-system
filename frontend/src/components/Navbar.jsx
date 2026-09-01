@@ -20,7 +20,7 @@ const Navbar = ({ isAuthPage = false, hideSignIn = false }) => {
             <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-2 ring-slate-950" />
           </div>
           <div className="flex flex-col">
-            <span className="leading-none text-white">CodeReview <span className="text-sky-400">AI</span></span>
+            <span className="leading-none text-white font-extrabold tracking-tight">Inspectra <span className="text-sky-400">AI</span></span>
             <span className="text-[10px] font-medium tracking-wider uppercase text-slate-400">GitHub Native</span>
           </div>
         </Link>

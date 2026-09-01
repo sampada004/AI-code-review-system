@@ -16,8 +16,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "CodeReview AI",
-  description: "AI-powered code review workspace",
+  title: "Inspectra - Autonomous AI Code Review System",
+  description: "AI-powered code review and vulnerability detection workspace for developers.",
 };
 
 export default function RootLayout({ children }) {

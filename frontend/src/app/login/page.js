@@ -120,7 +120,7 @@ function LoginPageContent() {
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-slate-800/80 shadow-inner">
                   <GitHubIcon className="h-7 w-7 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight text-white">Sign In to CodeReview AI</h2>
+                <h2 className="text-2xl font-bold tracking-tight text-white">Sign In to Inspectra AI</h2>
                 <p className="mt-2 text-sm text-slate-400">
                   Authenticate securely using your GitHub developer credentials.
                 </p>

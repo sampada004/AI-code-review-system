@@ -15,13 +15,13 @@ function IconShell({ children, className = "" }) {
   );
 }
 
-export function LogoMark({ className = "h-6 w-6" }) {
+export function LogoMark({ className = "h-7 w-7" }) {
   return (
     <div
-      className={`grid place-items-center rounded-sm border border-sky-200/40 bg-gradient-to-br from-sky-200 to-indigo-400 text-slate-950 shadow-[0_0_24px_rgba(96,165,250,0.25)] ${className}`}
+      className={`grid place-items-center rounded-lg border border-sky-400/30 bg-gradient-to-tr from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/20 ${className}`}
       aria-hidden="true"
     >
-      <span className="text-[10px] font-black tracking-[0.2em]">AI</span>
+      <span className="text-[11px] font-black tracking-wider text-white">IN</span>
     </div>
   );
 }

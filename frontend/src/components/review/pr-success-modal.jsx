@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { GitPullRequest, ExternalLink, Check, Copy, X, ShieldCheck } from "lucide-react";
 
-export function PRSuccessModal({ isOpen, onClose, prUrl, branchName, repoName, fileName }) {
+export function PRSuccessModal({ isOpen, onClose, prUrl, branchName, repoName, fileName, files = [] }) {
   const [copied, setCopied] = useState(false);
 
   if (!isOpen || !prUrl) return null;
@@ -15,6 +15,8 @@ export function PRSuccessModal({ isOpen, onClose, prUrl, branchName, repoName, f
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const filesList = files && files.length > 0 ? files : fileName ? [fileName] : [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -50,12 +52,27 @@ export function PRSuccessModal({ isOpen, onClose, prUrl, branchName, repoName, f
             <span className="font-semibold text-slate-200">{repoName || "Workspace"}</span>
           </div>
 
-          <div className="flex justify-between items-center text-slate-400">
-            <span>Target File:</span>
-            <span className="font-mono text-sky-300 font-medium truncate max-w-[200px]" title={fileName}>
-              {fileName}
-            </span>
-          </div>
+          {filesList.length === 1 ? (
+            <div className="flex justify-between items-center text-slate-400">
+              <span>Target File:</span>
+              <span className="font-mono text-sky-300 font-medium truncate max-w-[200px]" title={filesList[0]}>
+                {filesList[0]}
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-1.5 pt-1">
+              <div className="flex justify-between items-center text-slate-400">
+                <span>Included Files ({filesList.length}):</span>
+              </div>
+              <div className="max-h-24 overflow-y-auto space-y-1 pr-1 font-mono text-[11px] text-sky-300">
+                {filesList.map((f, i) => (
+                  <div key={i} className="truncate bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                    {f}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {branchName ? (
             <div className="flex justify-between items-center text-slate-400">

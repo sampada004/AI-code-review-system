@@ -13,7 +13,7 @@ export function ActiveReviewCard() {
       <div className="flex flex-col gap-6 border-b border-white/8 px-5 py-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <h2 className="font-serif text-[22px] font-semibold tracking-[-0.02em] text-[#e7ebf2]">
+            <h2 className="text-[18px] font-semibold tracking-tight text-[#e7ebf2]">
               {activeReview.title}
             </h2>
             <span className="rounded-sm border border-[#4d7edb]/40 bg-[#3f6ebc] px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-[#dce8ff]">

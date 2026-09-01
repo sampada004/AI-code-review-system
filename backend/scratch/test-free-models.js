@@ -1,17 +1,27 @@
 require('dotenv').config();
 const apiKey = process.env.OPENROUTER_API_KEY;
 
-const freeModels = [
+const candidates = [
   'minimax/minimax-m3:free',
-  'nvidia/nemotron-3-super-120b-a12b:free',
-  'google/gemma-4-31b-it:free',
-  'cohere/north-mini-code:free',
-  'google/gemma-4-26b-a4b-it:free',
-  'minimax/minimax-m2.7:free'
+  'minimax/minimax-m2.7:free',
+  'poolside/laguna-s-2.1:free',
+  'z-ai/glm-5.2:free',
+  'inclusionai/ling-3.0-flash-fin:free',
+  'cohere/north-mini-code:free'
 ];
 
-async function testModel(modelId) {
-  console.log(`Testing [${modelId}]...`);
+const sampleCode = `
+function calculateTotal(items) {
+  let total = 0;
+  for (let i = 0; i <= items.length; i++) {
+    total += items[i].price;
+  }
+  return total;
+}
+`;
+
+async function testCandidate(modelId) {
+  console.log(`\n--- Testing [${modelId}] ---`);
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -22,26 +32,39 @@ async function testModel(modelId) {
       body: JSON.stringify({
         model: modelId,
         messages: [
-          { role: "user", content: "Return a JSON object {\"status\": \"ok\"}" }
+          { role: "system", content: "You are a code reviewer. Output ONLY a valid JSON object matching: {\"summary\":\"...\",\"overallSeverity\":\"high\",\"findings\":[{\"issue\":\"...\",\"lineNumber\":3,\"severity\":\"high\",\"recommendation\":\"...\",\"originalCodeSnippet\":\"...\",\"fixedCode\":\"...\"}]}" },
+          { role: "user", content: "Review this code:\n" + sampleCode }
         ]
       })
     });
-    console.log(`[${modelId}] status: ${res.status}`);
+    
+    console.log(`Status: ${res.status}`);
     const data = await res.json();
-    if (res.ok) {
-      console.log(`[${modelId}] response snippet:`, JSON.stringify(data.choices?.[0]?.message?.content).substring(0, 100));
+    if (!res.ok) {
+      console.log('Error:', data.error?.message || data);
+      return;
+    }
+    const msg = data.choices?.[0]?.message;
+    const content = msg?.content || msg?.reasoning || "";
+    console.log('Content snippet:', (content || "").substring(0, 150));
+    const firstBrace = (content || "").indexOf('{');
+    const lastBrace = (content || "").lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      const parsed = JSON.parse(content.substring(firstBrace, lastBrace + 1));
+      console.log('SUCCESS! Parsed JSON findings count:', parsed.findings?.length);
     } else {
-      console.log(`[${modelId}] error:`, data);
+      console.log('Failed to locate JSON braces');
     }
   } catch (err) {
-    console.error(`[${modelId}] failed:`, err.message);
+    console.error('Error:', err.message);
   }
 }
 
 async function main() {
-  for (const m of freeModels) {
-    await testModel(m);
+  for (const m of candidates) {
+    await testCandidate(m);
   }
 }
 
 main();
+

@@ -8,8 +8,12 @@ function snippetLinesCount(str) {
   return str.split(/\r\n|\r|\n/).length;
 }
 
+import { CheckCircle2, FileCode2 } from "lucide-react";
+
 export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   analysisState = "idle",
+  isAnalyzed = false,
+  hasUnanalyzedChanges = false,
   onAnalyze,
   layoutTrigger,
   statusMessage,
@@ -22,6 +26,7 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   selectedFindingIndex = null,
   onSelectFinding,
   appliedFixes = new Set(),
+  onContentChange,
 }, ref) {
   const editorInstanceRef = useRef(null);
   const monacoInstanceRef = useRef(null);
@@ -59,13 +64,17 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
 
         // Intelligent Range Resolution
         if (finding.originalCodeSnippet) {
-          const rawSnippet = finding.originalCodeSnippet.trim();
-          const matches = model.findMatches(rawSnippet, false, false, false, null, false);
+          const rawSnippet = finding.originalCodeSnippet;
+          let matches = model.findMatches(rawSnippet, false, false, false, null, false);
+          if (!matches || matches.length === 0) {
+            matches = model.findMatches(rawSnippet.trim(), false, false, false, null, false);
+          }
+
           if (matches && matches.length > 0) {
             targetRange = matches[0].range;
           } else {
             // Line-ending normalized search
-            const normalizedSnippet = rawSnippet.replace(/\r\n/g, '\n');
+            const normalizedSnippet = rawSnippet.replace(/\r\n/g, '\n').trim();
             const fullText = model.getValue();
             const normalizedFullText = fullText.replace(/\r\n/g, '\n');
             const foundIdx = normalizedFullText.indexOf(normalizedSnippet);
@@ -106,8 +115,11 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
         const model = editor.getModel();
         
         if (model && finding.fixedCode) {
-          const searchStr = finding.fixedCode.trim();
-          const matches = model.findMatches(searchStr, false, false, false, null, false);
+          const searchStr = finding.fixedCode;
+          let matches = model.findMatches(searchStr, false, false, false, null, false);
+          if (!matches || matches.length === 0) {
+            matches = model.findMatches(searchStr.trim(), false, false, false, null, false);
+          }
           if (matches && matches.length > 0) {
             targetRange = matches[0].range;
           }
@@ -127,8 +139,10 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
       const model = editor.getModel();
       if (!model) return;
       
-      const searchStr = originalCodeSnippet.trim();
-      const matches = model.findMatches(searchStr, false, false, false, null, false);
+      let matches = model.findMatches(originalCodeSnippet, false, false, false, null, false);
+      if (!matches || matches.length === 0) {
+        matches = model.findMatches(originalCodeSnippet.trim(), false, false, false, null, false);
+      }
       
       if (matches && matches.length > 0) {
         const targetRange = matches[0].range;
@@ -141,30 +155,12 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
     }
   }));
 
-  const handleEditorDidMount = (editor, monaco) => {
-    editorInstanceRef.current = editor;
-    monacoInstanceRef.current = monaco;
-
-    // Attach click listener for bidirectional sync
-    mouseDownListenerRef.current = editor.onMouseDown((e) => {
-      if (e.target.position) {
-        const clickedLine = e.target.position.lineNumber;
-        const currentFindings = findingsRef.current;
-        const findingIndex = currentFindings.findIndex(f => f.lineNumber === clickedLine);
-        if (findingIndex !== -1 && onSelectFinding) {
-          onSelectFinding(findingIndex);
-        }
-      }
-    });
-  };
-
-  // Sync findings to editor decorations
-  useEffect(() => {
+  const updateDecorations = (currentFindings, currentAppliedFixes) => {
     const editor = editorInstanceRef.current;
     const monaco = monacoInstanceRef.current;
     if (!editor || !monaco) return;
 
-    if (!findings || findings.length === 0) {
+    if (!currentFindings || currentFindings.length === 0) {
       if (decorationsCollectionRef.current) {
         decorationsCollectionRef.current.clear();
       }
@@ -173,14 +169,13 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
 
     const existingRanges = decorationsCollectionRef.current ? decorationsCollectionRef.current.getRanges() : [];
 
-    const newDecorations = findings.map((finding, idx) => {
+    const newDecorations = currentFindings.map((finding, idx) => {
       if (finding.ignored) {
         return { range: new monaco.Range(1, 1, 1, 1), options: {} };
       }
 
       let range;
       if (existingRanges[idx] && existingRanges[idx].startLineNumber > 0) {
-        // Preserve dynamically tracked line positions
         range = existingRanges[idx];
       } else {
         const line = finding.lineNumber || finding.line_number || 1;
@@ -189,7 +184,6 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
         const rawEndLine = Math.max(line, line + snippetLines - 1);
         const model = editor.getModel();
         
-        // Clamp to prevent React unhandled exception crash from Monaco out-of-bounds error
         const lineCount = model ? model.getLineCount() : 1;
         const safeLine = Math.min(Math.max(line, 1), lineCount);
         const safeEndLine = Math.min(Math.max(rawEndLine, safeLine), lineCount);
@@ -204,7 +198,7 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
       let gutterClass = "monaco-gutter-low";
       let overviewRulerColor = "rgba(234, 179, 8, 0.8)"; // yellow
 
-      if (appliedFixes.has(idx)) {
+      if (currentAppliedFixes && currentAppliedFixes.has(idx)) {
         highlightClass = "monaco-highlight-applied";
         gutterClass = "monaco-gutter-applied";
         overviewRulerColor = "rgba(16, 185, 129, 0.8)"; // green
@@ -242,6 +236,31 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
     } else {
       decorationsCollectionRef.current = editor.createDecorationsCollection(newDecorations);
     }
+  };
+
+  const handleEditorDidMount = (editor, monaco) => {
+    editorInstanceRef.current = editor;
+    monacoInstanceRef.current = monaco;
+
+    // Attach click listener for bidirectional sync
+    mouseDownListenerRef.current = editor.onMouseDown((e) => {
+      if (e.target.position) {
+        const clickedLine = e.target.position.lineNumber;
+        const currentFindings = findingsRef.current;
+        const findingIndex = currentFindings.findIndex(f => f.lineNumber === clickedLine);
+        if (findingIndex !== -1 && onSelectFinding) {
+          onSelectFinding(findingIndex);
+        }
+      }
+    });
+
+    // Render decorations immediately on mount
+    updateDecorations(findingsRef.current, appliedFixes);
+  };
+
+  // Sync findings to editor decorations on state changes
+  useEffect(() => {
+    updateDecorations(findings, appliedFixes);
   }, [findings, appliedFixes]);
 
   // Sync selectedFindingIndex to editor scroll position
@@ -309,20 +328,40 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
     if (onAnalyze) onAnalyze({ sourceCode: source, language });
   };
 
+  const baseFileName = (fileName || "").split("/").pop() || fileName || "No file selected";
+  const dirPath = (fileName || "").includes("/") ? (fileName || "").substring(0, (fileName || "").lastIndexOf("/")) : "";
+
   return (
     <section className="flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#141821] shadow-xl">
       <div className="flex items-center justify-between border-b border-white/10 bg-[#181d28] px-4 py-2.5 text-[12px] text-slate-300">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="flex items-center gap-1.5 font-semibold text-slate-200 truncate">
-            <span className="text-sky-400">{repoName || "Repository"}</span>
-            {repoBranch ? (
-              <span className="rounded bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 text-[10px] font-mono text-sky-400">
-                {repoBranch}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 truncate">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <FileCode2 className="h-3.5 w-3.5" />
+            </div>
+            <span className="font-mono text-[13px] font-semibold text-white truncate" title={fileName}>
+              {baseFileName}
+            </span>
+            {dirPath ? (
+              <span className="text-[11px] text-slate-500 truncate max-w-[240px] font-mono hidden sm:inline" title={fileName}>
+                ({dirPath})
               </span>
             ) : null}
-            <span className="text-slate-500">/</span>
-            <span className="text-white font-mono text-[13px]">{fileName}</span>
           </div>
+
+          {isAnalyzed && !hasUnanalyzedChanges && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 shrink-0">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Analyzed</span>
+            </span>
+          )}
+
+          {isAnalyzed && hasUnanalyzedChanges && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-400 shrink-0" title="File has new unanalyzed modifications">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              <span>Unanalyzed Changes</span>
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -331,26 +370,26 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
               {statusMessage}
             </span>
           )}
-          <button
-            type="button"
-            onClick={handleAnalyzeClick}
-            disabled={analysisState === "analyzing"}
-            className="inline-flex items-center gap-1.5 rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-1.5 text-[12px] font-semibold text-slate-950 transition-all shadow-md shadow-sky-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {analysisState === "analyzing" ? (
-              <span className="flex items-center gap-2">
-                <svg className="h-4 w-4 animate-spin text-slate-950" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                  <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
-                </svg>
-                <span>Analyzing...</span>
-              </span>
-            ) : analysisState === "completed" ? (
-              <span>Analyze Again</span>
-            ) : (
-              <span>Analyze Code</span>
-            )}
-          </button>
+          {!isAnalyzed && (
+            <button
+              type="button"
+              onClick={handleAnalyzeClick}
+              disabled={analysisState === "analyzing"}
+              className="inline-flex items-center gap-1.5 rounded-md bg-sky-500 hover:bg-sky-400 px-3 py-1.5 text-[12px] font-semibold text-slate-950 transition-all shadow-md shadow-sky-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {analysisState === "analyzing" ? (
+                <span className="flex items-center gap-2">
+                  <svg className="h-4 w-4 animate-spin text-slate-950" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
+                  </svg>
+                  <span>Analyzing...</span>
+                </span>
+              ) : (
+                <span>Analyze Code</span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -360,6 +399,9 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
           language={getLanguageFromFilename(fileName)}
           theme="vs-dark"
           value={propFileContent !== null ? propFileContent : editorValue}
+          onChange={(val) => {
+            if (onContentChange) onContentChange(val);
+          }}
           onMount={handleEditorDidMount}
           loading={<div className="flex items-center justify-center h-full text-[12px] text-slate-500">Loading editor...</div>}
           options={{

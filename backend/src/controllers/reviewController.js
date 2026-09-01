@@ -66,6 +66,31 @@ async function getUserReviews(req, res, next) {
   }
 }
 
+async function getLatestReviewForFile(req, res, next) {
+  try {
+    const { repositoryId, filePath } = req.query;
+    if (!repositoryId || !filePath) {
+      return res.status(400).json({ success: false, message: "repositoryId and filePath are required" });
+    }
+
+    const review = await reviewModel.findActiveParentReview(repositoryId, filePath);
+    if (!review) {
+      return res.status(200).json({ success: true, review: null });
+    }
+
+    const findings = await findingModel.getFindingsByReviewId(review.id);
+    res.status(200).json({
+      success: true,
+      review: {
+        ...review,
+        findings
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function analyzeCode(req, res, next) {
   try {
     const { sourceCode, fileName, repositoryId, language, isRevalidation, previousFindings } = req.body;
@@ -140,5 +165,6 @@ module.exports = {
   submitReview,
   getReview,
   getUserReviews,
+  getLatestReviewForFile,
   analyzeCode,
 };

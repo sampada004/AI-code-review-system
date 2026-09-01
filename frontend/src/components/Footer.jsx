@@ -20,7 +20,7 @@ const Footer = () => {
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 shadow-md shadow-sky-500/30">
                 <Sparkles className="h-4 w-4 text-white" />
               </div>
-              <span>CodeReview <span className="text-sky-400">AI</span></span>
+              <span>Inspectra <span className="text-sky-400">AI</span></span>
             </Link>
             <p className="max-w-md text-xs sm:text-sm text-slate-400 leading-relaxed">
               Autonomous AI code review and vulnerability detection engine built natively for GitHub pull requests.
@@ -34,7 +34,7 @@ const Footer = () => {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span>All AI Review Engines Operational</span>
+              <span>All Inspectra Review Engines Operational</span>
             </div>
 
             <button
@@ -60,7 +60,7 @@ const Footer = () => {
           </div>
 
           <div className="flex items-center gap-1">
-            <span>© 2026 CodeReview AI. Built for GitHub developers worldwide.</span>
+            <span>© 2026 Inspectra AI. Built for GitHub developers worldwide.</span>
           </div>
         </div>
       </div>

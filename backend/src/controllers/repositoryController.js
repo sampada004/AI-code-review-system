@@ -99,9 +99,11 @@ async function createPullRequest(req, res, next) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
-    const { filePath, newContent, title, body, branch } = req.body;
-    if (!filePath || !newContent) {
-      return res.status(400).json({ success: false, message: "filePath and newContent are required" });
+    const { filePath, newContent, files, title, body, branch, customBranchName } = req.body;
+    
+    // Validate that either files array or filePath/newContent is provided
+    if ((!Array.isArray(files) || files.length === 0) && (!filePath || newContent == null)) {
+      return res.status(400).json({ success: false, message: "files array or (filePath and newContent) are required" });
     }
 
     const prResult = await githubService.createPullRequest({
@@ -110,15 +112,21 @@ async function createPullRequest(req, res, next) {
       baseBranch: branch || repo.default_branch || "main",
       filePath,
       newContent,
-      title: title || `AI Code Review Fixes for ${filePath}`,
-      body: body || "Automated PR created by CodePilot AI."
+      files,
+      title,
+      body,
+      customBranchName
     });
 
     try {
       const reviewModel = require("../models/reviewModel");
-      const activeParent = await reviewModel.findActiveParentReview(req.params.id, filePath);
-      if (activeParent) {
-        await reviewModel.updateReviewStatus(activeParent.id, "PR_CREATED", prResult.prUrl, prResult.branchName);
+      const affectedFiles = prResult.files || (filePath ? [filePath] : []);
+      
+      for (const fPath of affectedFiles) {
+        const activeParent = await reviewModel.findActiveParentReview(req.params.id, fPath);
+        if (activeParent) {
+          await reviewModel.updateReviewStatus(activeParent.id, "PR_CREATED", prResult.prUrl, prResult.branchName);
+        }
       }
     } catch (e) {
       console.error("Failed to update parent review PR status", e);

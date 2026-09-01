@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronIcon, FileIcon, FolderIcon, RefreshIcon } from "./review-icons";
 
-function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder, activeFile }) {
+import { CheckCircle2, AlertCircle, AlertTriangle, Circle } from "lucide-react";
+
+function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder, activeFile, fileStatusMap = {} }) {
   const isFolder = item.type === "folder";
-  const isExpanded = expandedFolders.has(item.name);
+  const folderId = item.path || item.name;
+  const isExpanded = isFolder && expandedFolders.has(folderId);
   const isActive = activeFile === item.path;
+  const status = !isFolder && item.path ? fileStatusMap[item.path] : null;
 
   const handleClick = () => {
     if (isFolder) {
-      toggleFolder(item.name);
+      toggleFolder(folderId);
     } else if (onFileSelect && item.path) {
       onFileSelect(item.path);
     }
@@ -27,7 +31,7 @@ function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder
       >
         <div className="flex min-w-0 items-center gap-2">
           {isFolder ? (
-            <div className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}>
+            <div className={`transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}>
               <ChevronIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
             </div>
           ) : (
@@ -40,19 +44,45 @@ function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder
           )}
           <span className="truncate">{item.name}</span>
         </div>
+
+        {status && (
+          <div className="shrink-0 flex items-center gap-1">
+            {status.isAnalyzed && !status.hasChanges && (
+              status.findingsCount === 0 ? (
+                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                  <CheckCircle2 className="h-2.5 w-2.5" /> Analyzed
+                </span>
+              ) : (
+                <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  status.severity === 'high'
+                    ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                    : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
+                }`}>
+                  {status.findingsCount} {status.findingsCount === 1 ? 'issue' : 'issues'}
+                </span>
+              )
+            )}
+            {status.hasChanges && (
+              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> Modified
+              </span>
+            )}
+          </div>
+        )}
       </div>
       
       {isFolder && isExpanded && item.children && (
         <div>
           {item.children.map((child) => (
             <TreeNode
-              key={child.name}
+              key={child.path || child.name}
               item={child}
               depth={depth + 1}
               onFileSelect={onFileSelect}
               expandedFolders={expandedFolders}
               toggleFolder={toggleFolder}
               activeFile={activeFile}
+              fileStatusMap={fileStatusMap}
             />
           ))}
         </div>
@@ -61,16 +91,63 @@ function TreeNode({ item, depth = 0, onFileSelect, expandedFolders, toggleFolder
   );
 }
 
-export function ReviewFileExplorer({ tree = [], repository = { name: "", branch: "" }, onFileSelect, onRefresh, activeFile, projectContext, isDetectingContext, onRefreshContext }) {
-  const [expandedFolders, setExpandedFolders] = useState(new Set(["src", "components", "services"]));
+export function ReviewFileExplorer({ tree = [], repository = { name: "", branch: "" }, onFileSelect, onRefresh, activeFile, projectContext, isDetectingContext, onRefreshContext, fileStatusMap = {} }) {
+  const storageKey = `inspectra.expandedFolders_${repository.name || 'default'}`;
 
-  const toggleFolder = (folderName) => {
+  const [expandedFolders, setExpandedFolders] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = window.localStorage.getItem(storageKey);
+        if (stored) {
+          return new Set(JSON.parse(stored));
+        }
+      } catch (e) {}
+    }
+    return new Set(["src", "components", "services", "app", "pages"]);
+  });
+
+  // Auto-expand parents of active file and top-level folders on initial load
+  useEffect(() => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(folderName)) {
-        next.delete(folderName);
+      
+      // Auto-expand all top-level folders if nothing is expanded
+      if (prev.size === 0 && tree.length > 0) {
+        tree.forEach(item => {
+          if (item.type === "folder") {
+            next.add(item.path || item.name);
+          }
+        });
+      }
+
+      // Auto-expand path leading to active file
+      if (activeFile) {
+        const parts = activeFile.split("/");
+        let accumulated = "";
+        for (let i = 0; i < parts.length - 1; i++) {
+          accumulated = accumulated ? `${accumulated}/${parts[i]}` : parts[i];
+          next.add(accumulated);
+          next.add(parts[i]); // support both name and path
+        }
+      }
+
+      return next;
+    });
+  }, [tree, activeFile]);
+
+  // Persist expanded folders to localStorage
+  const toggleFolder = (folderId) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
       } else {
-        next.add(folderName);
+        next.add(folderId);
+      }
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(Array.from(next)));
+        } catch (e) {}
       }
       return next;
     });
@@ -113,6 +190,7 @@ export function ReviewFileExplorer({ tree = [], repository = { name: "", branch:
                 expandedFolders={expandedFolders}
                 toggleFolder={toggleFolder}
                 activeFile={activeFile}
+                fileStatusMap={fileStatusMap}
               />
             ))}
           </div>

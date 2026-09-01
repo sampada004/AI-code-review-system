@@ -8,6 +8,7 @@ import {
   ChevronRight,
   AlertTriangle,
   CheckCircle2,
+  RotateCw,
 } from "lucide-react";
 
 const severityTone = {
@@ -142,6 +143,10 @@ export function ReviewFixesPanel({
   onCreatePullRequest,
   isCreatingPR = false,
   createdPrData = null,
+  modifiedFilesCount = 0,
+  onOpenMultiFilePR = null,
+  onReanalyze = null,
+  isAnalyzing = false,
 }) {
   const [selectedDiffData, setSelectedDiffData] = useState(null);
   const hasRun = !!summary || isHistoryMode || findings.length > 0;
@@ -181,22 +186,37 @@ export function ReviewFixesPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          aria-label={
-            collapsed
-              ? "Expand AI Suggested Fixes"
-              : "Collapse AI Suggested Fixes"
-          }
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-[4px] border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-        >
-          {collapsed ? (
-            <ChevronLeft className="h-4 w-4" />
-          ) : (
-            <ChevronRight className="h-4 w-4" />
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onReanalyze && !collapsed && (
+            <button
+              type="button"
+              onClick={onReanalyze}
+              disabled={isAnalyzing}
+              className="inline-flex items-center gap-1.5 rounded-[4px] border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1.5 text-[11px] font-medium text-sky-300 transition disabled:opacity-50"
+              title="Re-run AI analysis on this file"
+            >
+              <RotateCw className={`h-3 w-3 ${isAnalyzing ? "animate-spin text-sky-400" : ""}`} />
+              <span>{isAnalyzing ? "Analyzing..." : "Re-analyze"}</span>
+            </button>
           )}
-        </button>
+
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            aria-label={
+              collapsed
+                ? "Expand AI Suggested Fixes"
+                : "Collapse AI Suggested Fixes"
+            }
+            className="grid h-8 w-8 place-items-center rounded-[4px] border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            {collapsed ? (
+              <ChevronLeft className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       </div>
 
       {collapsed ? (
@@ -430,31 +450,43 @@ export function ReviewFixesPanel({
               </a>
             </div>
           ) : validationReport ? (
-            <div className="relative group mt-1">
-              <button
-                type="button"
-                onClick={onCreatePullRequest}
-                disabled={validationReport.status !== "all_resolved" || isCreatingPR}
-                className="w-full flex items-center justify-center gap-2 rounded-[4px] bg-emerald-600 px-3 py-2 text-[13px] font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isCreatingPR ? (
-                  <>
-                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-                      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
-                    </svg>
-                    Creating PR...
-                  </>
-                ) : (
-                  <>Create Pull Request</>
-                )}
-              </button>
-              {validationReport.status !== "all_resolved" && (
-                <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-48 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 z-50">
-                  <div className="rounded border border-[#3a404b] bg-[#141821] px-3 py-2 text-center text-[11px] text-slate-300 shadow-xl">
-                    Resolve all issues before opening a Pull Request.
+            <div className="space-y-2 mt-1">
+              <div className="relative group">
+                <button
+                  type="button"
+                  onClick={onCreatePullRequest}
+                  disabled={validationReport.status !== "all_resolved" || isCreatingPR}
+                  className="w-full flex items-center justify-center gap-2 rounded-[4px] bg-emerald-600 px-3 py-2 text-[13px] font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-900/20"
+                >
+                  {isCreatingPR ? (
+                    <>
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                        <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
+                      </svg>
+                      Creating PR...
+                    </>
+                  ) : (
+                    <>Create Pull Request (Current File)</>
+                  )}
+                </button>
+                {validationReport.status !== "all_resolved" && (
+                  <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 w-48 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-100 z-50">
+                    <div className="rounded border border-[#3a404b] bg-[#141821] px-3 py-2 text-center text-[11px] text-slate-300 shadow-xl">
+                      Resolve all issues before opening a Pull Request.
+                    </div>
                   </div>
-                </div>
+                )}
+              </div>
+
+              {modifiedFilesCount > 1 && onOpenMultiFilePR && (
+                <button
+                  type="button"
+                  onClick={onOpenMultiFilePR}
+                  className="w-full flex items-center justify-center gap-2 rounded-[4px] border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 text-[12px] font-medium text-emerald-300 transition"
+                >
+                  <span>Bundle All {modifiedFilesCount} Modified Files into PR</span>
+                </button>
               )}
             </div>
           ) : null}

@@ -80,43 +80,47 @@ export default function AddRepoForm({ onCancel, onAdded }) {
   }
 
   return (
-    <section className="rounded-md border border-[#38404d] bg-[#161a22] px-6 py-6">
-      <h2 className="font-semibold text-[#e7ebf2]">Add Repository</h2>
+    <section className="rounded-xl border border-white/10 bg-[#0f141f] p-6 shadow-xl">
+      <h2 className="text-base font-semibold text-white">Repository Details</h2>
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <div>
-          <label className="block text-sm text-slate-300 mb-1">Repository URL</label>
+          <label className="block text-xs font-medium text-slate-300 mb-1.5">Repository URL or Slug</label>
           <input
             value={repositoryUrl}
             onChange={(e) => setRepositoryUrl(e.target.value)}
-            placeholder="https://github.com/owner/repo or owner/repo"
-            className="w-full rounded-md border border-[#2b313a] bg-[#0f1418] px-3 py-2 text-slate-200"
+            placeholder="e.g. facebook/react or https://github.com/owner/repo"
+            className="w-full rounded-lg border border-white/10 bg-[#080c14] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20"
           />
-          <p className="mt-2 text-xs text-slate-400">Example: owner/repo or https://github.com/owner/repo</p>
+          <p className="mt-1.5 text-xs text-slate-500">Supported: owner/repo or full HTTPS GitHub URL</p>
         </div>
 
         <div>
-          <label className="block text-sm text-slate-300 mb-1">Default Branch (optional)</label>
+          <label className="block text-xs font-medium text-slate-300 mb-1.5">Default Branch (optional)</label>
           <input
             value={defaultBranch}
             onChange={(e) => setDefaultBranch(e.target.value)}
             placeholder="main"
-            className="w-full rounded-md border border-[#2b313a] bg-[#0f1418] px-3 py-2 text-slate-200"
+            className="w-full rounded-lg border border-white/10 bg-[#080c14] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20"
           />
         </div>
 
-        {error ? <div className="text-sm text-rose-400">{error}</div> : null}
+        {error ? (
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">
+            {error}
+          </div>
+        ) : null}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            className="inline-flex items-center rounded-md bg-gradient-to-b from-[#0f68d9] to-[#0b57c6] px-4 py-2 text-sm font-medium text-white shadow-lg hover:brightness-105"
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-400/40 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-sky-500/20 transition hover:brightness-110 disabled:opacity-50"
             disabled={loading}
           >
-            {loading ? "Adding..." : "Add Repository"}
+            {loading ? "Connecting Repository..." : "Connect Repository"}
           </button>
           <button
             type="button"
-            className="inline-flex items-center rounded-md bg-transparent border border-[#2b313a] px-3 py-2 text-sm text-slate-300 hover:bg-white/5"
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white transition"
             onClick={() => {
               if (onCancel) onCancel();
               else router.push("/dashboard");

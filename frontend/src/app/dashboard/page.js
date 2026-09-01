@@ -5,7 +5,7 @@ import { DashboardSidebar } from "@/components/dashboard/sidebar";
 import { DashboardTopbar } from "@/components/dashboard/topbar";
 
 export const metadata = {
-  title: "Dashboard | CodePilot AI",
+  title: "Dashboard | Inspectra AI",
   description: "AI code review dashboard",
 };
 

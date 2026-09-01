@@ -17,10 +17,10 @@ export function ActivityTable() {
   return (
     <section>
       <div className="mb-4 flex items-end justify-between">
-        <h2 className="font-serif text-[22px] font-semibold tracking-[-0.02em] text-[#e7ebf2]">
+        <h2 className="text-[18px] font-semibold tracking-tight text-[#e7ebf2]">
           Recent Activity
         </h2>
-        <a href="#" className="text-[12px] text-slate-300 transition hover:text-white">
+        <a href="/history" className="text-[12px] text-slate-300 transition hover:text-white">
           View Audit Log
         </a>
       </div>
