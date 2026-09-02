@@ -23,14 +23,25 @@ async function initializeDatabase() {
         id BIGINT AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT NOT NULL,
         github_id VARCHAR(100) NOT NULL UNIQUE,
-        username VARCHAR(255) NOT NULL,
-        access_token TEXT NOT NULL,
-        avatar_url VARCHAR(500) NULL,
+        github_username VARCHAR(255) NULL,
+        github_avatar_url VARCHAR(500) NULL,
+        encrypted_access_token TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    
+    // Add columns if table already existed with old names
+    try {
+      await pool.query(`ALTER TABLE github_accounts ADD COLUMN github_username VARCHAR(255) NULL`);
+    } catch (e) {}
+    try {
+      await pool.query(`ALTER TABLE github_accounts ADD COLUMN github_avatar_url VARCHAR(500) NULL`);
+    } catch (e) {}
+    try {
+      await pool.query(`ALTER TABLE github_accounts ADD COLUMN encrypted_access_token TEXT NULL`);
+    } catch (e) {}
     console.log("✓ github_accounts table verified");
 
     // 3. Repositories table

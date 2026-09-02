@@ -1,6 +1,17 @@
 const pool = require("../config/db");
 
 async function createOrUpdate({ userId, githubId, githubUsername, githubAvatarUrl, encryptedAccessToken }) {
+  // Ensure schema compatibility
+  try {
+    await pool.query("ALTER TABLE github_accounts ADD COLUMN github_username VARCHAR(255) NULL");
+  } catch (e) {}
+  try {
+    await pool.query("ALTER TABLE github_accounts ADD COLUMN github_avatar_url VARCHAR(500) NULL");
+  } catch (e) {}
+  try {
+    await pool.query("ALTER TABLE github_accounts ADD COLUMN encrypted_access_token TEXT NULL");
+  } catch (e) {}
+
   const [existing] = await pool.execute(
     "SELECT id FROM github_accounts WHERE user_id = ? OR github_id = ? LIMIT 1",
     [userId, String(githubId)]
@@ -29,7 +40,14 @@ async function findByUserId(userId) {
     "SELECT * FROM github_accounts WHERE user_id = ? LIMIT 1",
     [userId]
   );
-  return rows[0] || null;
+  if (!rows[0]) return null;
+  const row = rows[0];
+  return {
+    ...row,
+    github_username: row.github_username || row.username,
+    github_avatar_url: row.github_avatar_url || row.avatar_url,
+    encrypted_access_token: row.encrypted_access_token || row.access_token,
+  };
 }
 
 module.exports = {
