@@ -122,25 +122,28 @@ async function githubCallback(req, res, next) {
     // Clear state cookie
     res.clearCookie("oauth_state", { path: "/" });
 
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/auth/github/callback`;
+    const clientId = process.env.GITHUB_CLIENT_ID || "Ov23liJYJqQciQXHOTs0";
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET || "37a27ba9dfaa3fd7073302a39094569075824567";
+    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI || "https://inspectra-backend-fktg.onrender.com/api/auth/github/callback";
 
     console.log("[github OAuth] Exchanging code for token with redirectUri:", redirectUri);
+
+    const params = new URLSearchParams();
+    params.append("client_id", clientId);
+    params.append("client_secret", clientSecret);
+    params.append("code", code);
+    if (redirectUri) {
+      params.append("redirect_uri", redirectUri);
+    }
 
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json",
         "User-Agent": "Inspectra-AI",
       },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
+      body: params.toString(),
     });
 
     const tokenData = await tokenResponse.json();
