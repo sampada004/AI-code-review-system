@@ -124,9 +124,10 @@ async function githubCallback(req, res, next) {
 
     const clientId = process.env.GITHUB_CLIENT_ID;
     const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI;
+    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/auth/github/callback`;
 
-    // Exchange code for access token
+    console.log("[github OAuth] Exchanging code for token with redirectUri:", redirectUri);
+
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
@@ -142,8 +143,10 @@ async function githubCallback(req, res, next) {
     });
 
     const tokenData = await tokenResponse.json();
-    if (tokenData.error) {
-      throw new Error(`GitHub token error: ${tokenData.error_description}`);
+    console.log("[github OAuth] GitHub token exchange response:", tokenData);
+
+    if (tokenData.error || !tokenData.access_token) {
+      throw new Error(`GitHub token error (${tokenData.error || 'no_token'}): ${tokenData.error_description || JSON.stringify(tokenData)}`);
     }
 
     const accessToken = tokenData.access_token;
@@ -206,7 +209,7 @@ async function githubCallback(req, res, next) {
     res.cookie("auth_token", token, getAuthCookieOptions());
     
     // Redirect to frontend callback page
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://inspectra-frontend-sigma.vercel.app" : "http://localhost:3000");
     res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   } catch (error) {
     next(error);
