@@ -8,12 +8,22 @@ const reviewRoutes = require("./routes/reviewRoutes");
 const repositoryRoutes = require("./routes/repositoryRoutes");
 
 const app = express();
-const frontendOrigin = process.env.FRONTEND_URL || "http://localhost:3000";
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "https://inspectra-frontend-sigma.vercel.app",
+  "http://localhost:3000",
+].filter(Boolean);
 
 // Middleware
 app.use(
   cors({
-    origin: frontendOrigin,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app") || origin.includes("localhost")) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
@@ -52,6 +62,6 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
