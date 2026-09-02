@@ -10,3 +10,12 @@ export function apiUrl(path) {
   if (!base) return path;
   return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
+
+export function getGitHubLoginUrl() {
+  const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || "Ov23liJYJqQciQXHOTs0";
+  const apiBase = getApiBase();
+  const redirectUri = apiBase 
+    ? `${apiBase}/auth/github/callback` 
+    : "http://localhost:5000/api/auth/github/callback";
+  return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user%20user:email%20repo`;
+}

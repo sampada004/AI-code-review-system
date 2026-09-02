@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import GitHubIcon from "@/components/common/github-icon";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, getGitHubLoginUrl } from "@/lib/api";
 import { 
   Sparkles, 
   ArrowRight, 
@@ -35,7 +35,7 @@ function RegisterPageContent() {
 
   const handleGitHubSignup = () => {
     setIsRedirecting(true);
-    window.location.href = apiUrl("/auth/github/login");
+    window.location.href = getGitHubLoginUrl();
   };
 
   return (

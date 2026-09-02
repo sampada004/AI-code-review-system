@@ -139,7 +139,7 @@ const Hero = () => {
   const currentDemo = codeDemos[activeTab];
 
   const handleGitHubAuth = () => {
-    window.location.href = apiUrl("/auth/github/login");
+    window.location.href = getGitHubLoginUrl();
   };
 
   return (

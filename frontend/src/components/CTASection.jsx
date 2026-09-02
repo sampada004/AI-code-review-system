@@ -2,11 +2,11 @@
 
 import GitHubIcon from "@/components/common/github-icon";
 import { Sparkles, ArrowRight, ShieldCheck, Zap } from "lucide-react";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, getGitHubLoginUrl } from "@/lib/api";
 
 const CTASection = () => {
   const handleGitHubAuth = () => {
-    window.location.href = apiUrl("/auth/github/login");
+    window.location.href = getGitHubLoginUrl();
   };
 
   return (

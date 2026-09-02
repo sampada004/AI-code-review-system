@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Sparkles, ArrowRight } from "lucide-react";
 import GitHubIcon from "@/components/common/github-icon";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, getGitHubLoginUrl } from "@/lib/api";
 
 const Navbar = ({ isAuthPage = false, hideSignIn = false }) => {
   return (
@@ -65,7 +65,7 @@ const Navbar = ({ isAuthPage = false, hideSignIn = false }) => {
               )}
               <button
                 onClick={() => {
-                  window.location.href = apiUrl("/auth/github/login");
+                  window.location.href = getGitHubLoginUrl();
                 }}
                 className="btn-primary text-xs sm:text-sm px-4 py-2 flex items-center gap-2"
               >

@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import GitHubIcon from "@/components/common/github-icon";
-import { apiUrl } from "@/lib/api";
+import { apiUrl, getGitHubLoginUrl } from "@/lib/api";
 import { 
   ShieldCheck, 
   Zap, 
@@ -18,19 +18,19 @@ import {
 const features = [
   {
     icon: Zap,
-    title: "Instant Code Analysis",
-    description: "Deep semantic and AST reviews generated within seconds of creating a PR."
+    title: "Instant PR Analysis",
+    description: "Multi-file diff parsing and actionable suggestions in seconds.",
   },
   {
     icon: ShieldCheck,
-    title: "Automated Security Audits",
-    description: "Detect OWASP vulnerabilities, secret leaks, and logic flaws before merge."
+    title: "Enterprise Grade Security",
+    description: "OWASP Top 10 detection with automated zero-touch patches.",
   },
   {
     icon: GitPullRequest,
-    title: "1-Click AI Fix Recommendations",
-    description: "Get verified refactoring patches and line-by-line actionable comments."
-  }
+    title: "One-Click Fix Branches",
+    description: "Atomic multi-file branch creation with verified fixes.",
+  },
 ];
 
 function LoginPageContent() {
@@ -41,7 +41,7 @@ function LoginPageContent() {
 
   const handleGitHubLogin = () => {
     setIsRedirecting(true);
-    window.location.href = apiUrl("/auth/github/login");
+    window.location.href = getGitHubLoginUrl();
   };
 
   return (
