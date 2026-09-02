@@ -133,6 +133,7 @@ async function githubCallback(req, res, next) {
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "User-Agent": "Inspectra-AI",
       },
       body: JSON.stringify({
         client_id: clientId,
@@ -156,6 +157,7 @@ async function githubCallback(req, res, next) {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
+        "User-Agent": "Inspectra-AI",
       },
     });
     
@@ -166,6 +168,7 @@ async function githubCallback(req, res, next) {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         Accept: "application/json",
+        "User-Agent": "Inspectra-AI",
       },
     });
     
