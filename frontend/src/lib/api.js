@@ -1,8 +1,13 @@
 export function getApiBase() {
-  // At runtime in the browser, NEXT_PUBLIC_API_URL will be inlined by Next.js
-  return typeof window !== "undefined" && process.env.NEXT_PUBLIC_API_URL
-    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "")
-    : (process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "") : "");
+  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "");
+  }
+  return typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://inspectra-backend-fktg.onrender.com/api"
+    : "http://localhost:5000/api";
 }
 
 export function apiUrl(path) {
