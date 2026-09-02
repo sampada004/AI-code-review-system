@@ -262,7 +262,8 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
 }
 
 async function analyzeCode(sourceCode, fileName, isRevalidation = false, previousFindings = null, projectContext = null) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const rawKey = process.env.OPENROUTER_API_KEY || "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";
+  const apiKey = String(rawKey).split(/[\r\n]+/)[0].trim().replace(/^Bearer\s+/i, "");
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY is missing from environment variables.");
   }
@@ -342,7 +343,7 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
         headers: {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "http://localhost:3000",
+          "HTTP-Referer": process.env.FRONTEND_URL || "https://inspectra-frontend-sigma.vercel.app",
           "X-Title": "Inspectra AI"
         },
         body: JSON.stringify({
