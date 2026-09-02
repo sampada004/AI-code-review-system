@@ -165,22 +165,34 @@ async function githubCallback(req, res, next) {
     });
     
     const githubUser = await userResponse.json();
+    console.log("[github OAuth] User details from GitHub:", { id: githubUser.id, login: githubUser.login, email: githubUser.email });
 
     // Fetch primary email
-    const emailResponse = await fetch("https://api.github.com/user/emails", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-        "User-Agent": "Inspectra-AI",
-      },
-    });
-    
-    const emails = await emailResponse.json();
-    const primaryEmailObj = emails.find(e => e.primary) || emails[0];
-    if (!primaryEmailObj) {
-      throw new Error("No email found on GitHub account");
+    let primaryEmail = githubUser.email;
+    try {
+      const emailResponse = await fetch("https://api.github.com/user/emails", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+          "User-Agent": "Inspectra-AI",
+        },
+      });
+      const emails = await emailResponse.json();
+      if (Array.isArray(emails) && emails.length > 0) {
+        const primaryObj = emails.find(e => e.primary && e.verified) || emails.find(e => e.primary) || emails[0];
+        if (primaryObj && primaryObj.email) {
+          primaryEmail = primaryObj.email;
+        }
+      }
+    } catch (e) {
+      console.warn("[github OAuth] Could not fetch private emails, using public email fallback:", e.message);
     }
-    const primaryEmail = primaryEmailObj.email;
+
+    if (!primaryEmail) {
+      primaryEmail = `${githubUser.login || githubUser.id}@users.noreply.github.com`;
+    }
+
+    console.log("[github OAuth] Selected primary email:", primaryEmail);
 
     // See if user exists
     let user = await userModel.findByEmail(primaryEmail);
@@ -188,10 +200,13 @@ async function githubCallback(req, res, next) {
     if (!user) {
       // Create user
       user = await userModel.create({
-        fullName: githubUser.name || githubUser.login,
+        fullName: githubUser.name || githubUser.login || "GitHub User",
         email: primaryEmail,
         hashedPassword: null,
       });
+      console.log("[github OAuth] Created new user in database:", user.id);
+    } else {
+      console.log("[github OAuth] Found existing user:", user.id);
     }
 
     // Encrypt token and store in github_accounts
@@ -203,6 +218,7 @@ async function githubCallback(req, res, next) {
       githubAvatarUrl: githubUser.avatar_url,
       encryptedAccessToken: encryptedToken,
     });
+    console.log("[github OAuth] Updated github_accounts for user:", user.id);
 
     // Create JWT
     const safeUser = {
@@ -216,8 +232,10 @@ async function githubCallback(req, res, next) {
     
     // Redirect to frontend callback page
     const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://inspectra-frontend-sigma.vercel.app" : "http://localhost:3000");
+    console.log("[github OAuth] Login complete! Redirecting to:", `${frontendUrl}/auth/callback`);
     res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   } catch (error) {
+    console.error("[github OAuth] Error in githubCallback:", error);
     next(error);
   }
 }
