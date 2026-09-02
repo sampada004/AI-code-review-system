@@ -231,12 +231,15 @@ async function githubCallback(req, res, next) {
     res.cookie("auth_token", token, getAuthCookieOptions());
     
     // Redirect to frontend callback page
-    const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://inspectra-frontend-sigma.vercel.app" : "http://localhost:3000");
+    const rawFrontend = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://inspectra-frontend-sigma.vercel.app" : "http://localhost:3000");
+    const frontendUrl = String(rawFrontend).trim().replace(/[\r\n]+/g, "").replace(/\/+$/, "");
     console.log("[github OAuth] Login complete! Redirecting to:", `${frontendUrl}/auth/callback`);
-    res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+    return res.redirect(`${frontendUrl}/auth/callback?token=${encodeURIComponent(token)}`);
   } catch (error) {
     console.error("[github OAuth] Error in githubCallback:", error);
-    next(error);
+    const rawFrontend = process.env.FRONTEND_URL || (process.env.NODE_ENV === "production" ? "https://inspectra-frontend-sigma.vercel.app" : "http://localhost:3000");
+    const frontendUrl = String(rawFrontend).trim().replace(/[\r\n]+/g, "").replace(/\/+$/, "");
+    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error.message || "Authentication failed")}`);
   }
 }
 
