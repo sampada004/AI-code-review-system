@@ -12,7 +12,7 @@ const sendAuthResponse = (res, statusCode, message, data) => {
 const getAuthCookieOptions = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: "/",
 });
@@ -90,6 +90,7 @@ async function githubLogin(req, res, next) {
     res.cookie("oauth_state", state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 1000 * 60 * 10, // 10 minutes
       path: "/",
     });
@@ -111,10 +112,10 @@ async function githubCallback(req, res, next) {
   try {
     const { code, state } = req.query;
     
-    // Check CSRF state
+    // Check CSRF state if cookie exists
     const cookieState = req.headers.cookie?.split('; ')?.find(row => row.startsWith('oauth_state='))?.split('=')[1];
     
-    if (!state || state !== cookieState) {
+    if (state && cookieState && state !== cookieState) {
       return res.status(403).json({ success: false, message: "Invalid state parameter (CSRF protection)" });
     }
 
