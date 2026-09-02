@@ -1,13 +1,16 @@
 const crypto = require("crypto");
 
-// Must be exactly 32 bytes (256 bits)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32); 
+function getKey() {
+  const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || "inspectra_default_secure_secret_key_2026";
+  return crypto.createHash("sha256").update(String(secret)).digest();
+}
+
 const ALGORITHM = "aes-256-gcm";
 
 function encryptToken(text) {
   if (!text) return null;
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, getKey(), iv);
   
   let encrypted = cipher.update(text, "utf8", "hex");
   encrypted += cipher.final("hex");
@@ -28,7 +31,7 @@ function decryptToken(encryptedData) {
   const authTag = Buffer.from(parts[1], "hex");
   const encryptedText = Buffer.from(parts[2], "hex");
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(ENCRYPTION_KEY), iv);
+  const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv);
   decipher.setAuthTag(authTag);
 
   let decrypted = decipher.update(encryptedText, "hex", "utf8");
