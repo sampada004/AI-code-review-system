@@ -78,7 +78,12 @@ function FixCard({ fix, isSelected, onClick, isApplied, onUndo, onIgnore }) {
           </p>
         )}
       </div>
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+      {!fix.fixedCode && (
+        <div className="mt-3 text-[11px] text-slate-400 italic">
+          Manual code update recommended (no automatic replacement snippet available).
+        </div>
+      )}
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         {fix.fixedCode && fix.onViewFix && (
           isApplied ? (
             <button

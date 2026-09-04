@@ -233,15 +233,31 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
   for (const finding of findings) {
     if (!finding || (!finding.issue && !finding.recommendation)) continue;
 
-    finding.originalCodeSnippet = stripMd(finding.originalCodeSnippet);
-    finding.fixedCode = stripMd(finding.fixedCode);
+    // Normalize keys from different LLM outputs (camelCase and snake_case)
+    const rawOriginalSnippet = finding.originalCodeSnippet || finding.original_code_snippet || "";
+    const rawFixedCode = finding.fixedCode || finding.fixed_code || "";
+    const rawSuggestedFix = finding.suggestedFix || finding.suggested_fix || "";
+    const rawLineNumber = finding.lineNumber || finding.line_number || null;
+
+    finding.lineNumber = rawLineNumber;
+    finding.suggestedFix = rawSuggestedFix;
+    finding.originalCodeSnippet = stripMd(rawOriginalSnippet);
+    finding.fixedCode = stripMd(rawFixedCode);
+
+    // Also populate snake_case aliases for compatibility
+    finding.original_code_snippet = finding.originalCodeSnippet;
+    finding.fixed_code = finding.fixedCode;
+    finding.suggested_fix = finding.suggestedFix;
+    finding.line_number = finding.lineNumber;
 
     // Align snippet against actual source code
     if (finding.originalCodeSnippet && sourceCode) {
       const alignment = findAndAlignSnippet(sourceCode, finding.originalCodeSnippet, finding.lineNumber);
       finding.originalCodeSnippet = alignment.alignedSnippet;
+      finding.original_code_snippet = alignment.alignedSnippet;
       if (alignment.lineNumber) {
         finding.lineNumber = alignment.lineNumber;
+        finding.line_number = alignment.lineNumber;
       }
     }
 
@@ -252,6 +268,7 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
         console.warn(`[AI Fix Validation] Discarding dangerous fixedCode for finding (line ${finding.lineNumber}): ${validation.reason}`);
         // Nullify dangerous fixedCode so broken code is never applied to the user's editor
         finding.fixedCode = null;
+        finding.fixed_code = null;
       }
     }
 
