@@ -8,7 +8,7 @@ import {
   LogoMark,
   ReviewIcon,
 } from "./dashboard-icons";
-import { FolderPlus, User } from "lucide-react";
+import { FolderPlus, User, LogOut } from "lucide-react";
 import { sidebarNav } from "./dashboard-data";
 import { apiUrl } from "@/lib/api";
 
@@ -28,6 +28,29 @@ export function DashboardSidebar({
 }) {
   const [reviewsHref, setReviewsHref] = useState("/reviews");
   const [userProfile, setUserProfile] = useState(null);
+
+  const handleLogout = async (e) => {
+    e?.preventDefault?.();
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.sessionStorage.clear();
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      await fetch(apiUrl("/auth/logout"), {
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+      }).catch(() => {});
+      clearTimeout(timeoutId);
+    } catch (err) {}
+    finally {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -129,10 +152,20 @@ export function DashboardSidebar({
               </div>
             )}
             {!collapsed ? (
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-slate-200">{displayName}</div>
-                <div className="truncate text-[11px] text-slate-500 font-mono">{displayRole}</div>
-              </div>
+              <>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold text-slate-200">{displayName}</div>
+                  <div className="truncate text-[11px] text-slate-500 font-mono">{displayRole}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  title="Logout"
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </>
             ) : null}
           </div>
         </div>

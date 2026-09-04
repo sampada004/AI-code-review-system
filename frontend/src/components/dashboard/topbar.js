@@ -30,21 +30,34 @@ export function DashboardTopbar({
   }, []);
 
   const handleLogout = async () => {
+    if (isLoggingOut) return;
     setIsLoggingOut(true);
 
     try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.sessionStorage.clear();
+      }
+
+      // Best-effort backend call with 1.5s timeout so user is never blocked
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+
       await fetch(apiUrl("/auth/logout"), {
         method: "POST",
         credentials: "include",
-      });
-    } finally {
-      try {
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("auth_token");
-        }
-      } catch (e) {}
+        signal: controller.signal,
+      }).catch(() => {});
 
-      router.replace("/login");
+      clearTimeout(timeoutId);
+    } catch (e) {
+      console.error("Logout error:", e);
+    } finally {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      } else {
+        router.replace("/login");
+      }
     }
   };
 
