@@ -147,15 +147,21 @@ async function analyzeCode(req, res, next) {
       if (analysis.findings && analysis.findings.length > 0) {
         await findingModel.createFindings(review.id, analysis.findings);
       }
+
+      return res.status(200).json({
+        success: true,
+        analysis,
+        reviewId: review.id,
+        review
+      });
     } catch (dbError) {
       console.error("Failed to persist review to DB:", dbError);
-      // We don't fail the request here, just log the error
+      // Still return analysis if DB persistence had an issue
+      return res.status(200).json({
+        success: true,
+        analysis
+      });
     }
-
-    res.status(200).json({
-      success: true,
-      analysis
-    });
   } catch (error) {
     next(error);
   }

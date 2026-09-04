@@ -99,7 +99,7 @@ async function createPullRequest(req, res, next) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
-    const { filePath, newContent, files, title, body, branch, customBranchName } = req.body;
+    const { filePath, newContent, files, title, body, branch, customBranchName, reviewId } = req.body;
     
     // Validate that either files array or filePath/newContent is provided
     if ((!Array.isArray(files) || files.length === 0) && (!filePath || newContent == null)) {
@@ -120,13 +120,24 @@ async function createPullRequest(req, res, next) {
 
     try {
       const reviewModel = require("../models/reviewModel");
+      const pool = require("../config/db");
       const affectedFiles = prResult.files || (filePath ? [filePath] : []);
       
+      if (reviewId) {
+        await reviewModel.updateReviewStatus(reviewId, "PR_CREATED", prResult.prUrl, prResult.prNumber);
+      }
+
       for (const fPath of affectedFiles) {
         const activeParent = await reviewModel.findActiveParentReview(req.params.id, fPath);
         if (activeParent) {
-          await reviewModel.updateReviewStatus(activeParent.id, "PR_CREATED", prResult.prUrl, prResult.branchName);
+          await reviewModel.updateReviewStatus(activeParent.id, "PR_CREATED", prResult.prUrl, prResult.prNumber);
         }
+        
+        // Also update any reviews for this repository & file
+        await pool.execute(
+          `UPDATE reviews SET review_status = 'PR_CREATED', pr_url = ?, pr_number = ? WHERE repository_id = ? AND file_path = ?`,
+          [prResult.prUrl, prResult.prNumber, req.params.id, fPath]
+        );
       }
     } catch (e) {
       console.error("Failed to update parent review PR status", e);

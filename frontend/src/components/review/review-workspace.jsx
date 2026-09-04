@@ -122,6 +122,7 @@ export function ReviewWorkspace() {
   const [isPRModalOpen, setIsPRModalOpen] = useState(false);
   const [isMultiPRModalOpen, setIsMultiPRModalOpen] = useState(false);
   const [multiPRInitialMode, setMultiPRInitialMode] = useState("single");
+  const [currentReviewId, setCurrentReviewId] = useState(null);
   
   // Repository State
   const searchParams = useSearchParams();
@@ -825,6 +826,9 @@ export function ReviewWorkspace() {
       }
 
       if (!isBackground) {
+        if (data.reviewId) {
+          setCurrentReviewId(data.reviewId);
+        }
         setFindings(newFindings);
         setAnalysisSummary(analysis?.summary || "Analysis completed.");
         setOverallSeverity(analysis?.overallSeverity || "none");
@@ -990,7 +994,8 @@ export function ReviewWorkspace() {
         title,
         body,
         branch: branch || repoBranch,
-        customBranchName
+        customBranchName,
+        reviewId: currentReviewId || paramReviewId || undefined
       };
 
       if (isMulti && Array.isArray(files) && files.length > 0) {

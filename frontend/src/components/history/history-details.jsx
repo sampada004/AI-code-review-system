@@ -3,7 +3,20 @@
 import { useEffect, useState, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import { ReviewFixesPanel } from "@/components/review/review-fixes-panel";
-import { AlertTriangle, ArrowLeft } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  GitPullRequest,
+  ExternalLink,
+  FileCode2,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Clock,
+  GitCommit,
+  Sparkles,
+  Layers
+} from "lucide-react";
 import Link from "next/link";
 import * as monaco from "monaco-editor";
 
@@ -54,6 +67,13 @@ function calculateSimilarity(str1, str2) {
   const union = tokens1.size + tokens2.size - intersection;
   return union === 0 ? 0 : intersection / union;
 }
+
+const severityColors = {
+  high: "text-rose-400 bg-rose-500/10 border-rose-500/25",
+  medium: "text-amber-400 bg-amber-500/10 border-amber-500/25",
+  low: "text-sky-400 bg-sky-500/10 border-sky-500/25",
+  none: "text-emerald-400 bg-emerald-500/10 border-emerald-500/25",
+};
 
 export default function HistoryDetails({ reviewId }) {
   const [review, setReview] = useState(null);
@@ -168,8 +188,8 @@ export default function HistoryDetails({ reviewId }) {
     const language = getLanguageFromFilename(review.file_path || review.title);
 
     if (isDiffMode && latestReview) {
-      const originalUri = monaco.Uri.parse('inmemory://history-editor-original');
-      const modifiedUri = monaco.Uri.parse('inmemory://history-editor-modified');
+      const originalUri = monaco.Uri.parse(`inmemory://history-editor-original-${review.id}`);
+      const modifiedUri = monaco.Uri.parse(`inmemory://history-editor-modified-${latestReview.id}`);
       
       let originalModel = monaco.editor.getModel(originalUri);
       if (!originalModel) {
@@ -208,7 +228,7 @@ export default function HistoryDetails({ reviewId }) {
 
       editorInstanceRef.current = diffEditor;
     } else {
-      const uri = monaco.Uri.parse('inmemory://history-editor');
+      const uri = monaco.Uri.parse(`inmemory://history-editor-${review.id}`);
       
       let model = monaco.editor.getModel(uri);
       if (!model) {
@@ -237,7 +257,6 @@ export default function HistoryDetails({ reviewId }) {
     }
 
     return () => {
-      // Do not dispose models to reuse them, but dispose the editor instance
       if (editorInstanceRef.current) {
         editorInstanceRef.current.dispose();
         editorInstanceRef.current = null;
@@ -247,13 +266,10 @@ export default function HistoryDetails({ reviewId }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full min-h-[400px] text-slate-400">
+      <div className="flex items-center justify-center h-full min-h-[450px] text-slate-400">
         <div className="flex flex-col items-center gap-3">
-          <svg className="h-6 w-6 animate-spin text-sky-500" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
-            <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" className="opacity-75" />
-          </svg>
-          <span className="text-[13px]">Loading review details...</span>
+          <div className="h-10 w-10 rounded-full border-2 border-sky-500/20 border-t-sky-500 animate-spin" />
+          <span className="text-[13px] text-slate-300 animate-pulse">Loading review snapshot...</span>
         </div>
       </div>
     );
@@ -261,38 +277,100 @@ export default function HistoryDetails({ reviewId }) {
 
   if (error || !review) {
     return (
-      <div className="flex flex-col items-center justify-center h-full min-h-[400px]">
+      <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6">
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 text-rose-400 mb-4">
           <AlertTriangle className="h-6 w-6" />
         </div>
-        <h3 className="text-[15px] font-medium text-slate-200">Failed to load review</h3>
+        <h3 className="text-[16px] font-medium text-slate-200">Failed to load review snapshot</h3>
         <p className="mt-2 text-[13px] text-slate-400">{error || "Review not found"}</p>
-        <Link href="/history" className="mt-6 text-sky-400 hover:text-sky-300 text-[13px]">
-          ← Back to History
+        <Link 
+          href="/history" 
+          className="mt-6 inline-flex items-center gap-2 rounded-md bg-[#222834] px-4 py-2 text-sky-400 hover:text-sky-300 text-[13px] font-medium border border-white/5 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to History
         </Link>
       </div>
     );
   }
 
+  const sev = (review.overall_severity || "none").toLowerCase();
+  const sevColor = severityColors[sev] || severityColors.none;
+  const hasPr = Boolean(review.pr_url || review.pr_number || review.review_status === "PR_CREATED");
+  const createdPrData = hasPr ? {
+    prUrl: review.pr_url || "#",
+    prNumber: review.pr_number,
+    branchName: "main"
+  } : null;
+
   return (
-    <div className="flex flex-col h-full bg-[#0d1015] border border-white/10 rounded-[4px] overflow-hidden">
-      <div className="border-b border-white/10 bg-[#161b22] px-4 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <Link href="/history" className="text-slate-400 hover:text-white transition-colors p-1">
+    <div className="flex flex-col h-full bg-[#0d1015] border border-white/10 rounded-[6px] overflow-hidden shadow-2xl">
+      {/* Top Header Bar */}
+      <div className="border-b border-white/10 bg-[#161b22] px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link 
+            href="/history" 
+            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            title="Back to History"
+          >
             <ArrowLeft className="h-4 w-4" />
           </Link>
+
           <div className="h-4 w-px bg-white/10" />
-          <div>
-            <div className="text-[13px] font-medium text-[#e8edf4]">
-              {review.file_path || review.title || "Unknown File"}
+
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1.5 rounded bg-slate-800 border border-white/5 shrink-0">
+              <FileCode2 className="h-4 w-4 text-sky-400" />
             </div>
-            {review.repository_id && (
-              <div className="text-[11px] text-slate-500 mt-0.5">Repo ID: {review.repository_id}</div>
-            )}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-semibold text-white truncate max-w-xs md:max-w-md">
+                  {review.file_path || review.title || "Unknown File"}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${sevColor}`}>
+                  {sev}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                {review.repository_id && (
+                  <span className="font-mono text-slate-400">Repo #{review.repository_id}</span>
+                )}
+                {review.parent_review_id && (
+                  <span className="text-purple-400 flex items-center gap-1">
+                    <GitCommit className="h-2.5 w-2.5" /> Revalidation of #{review.parent_review_id}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-[12px] text-slate-400">
+
+        {/* Action Controls & PR Link */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Pull Request Badge / Button */}
+          {hasPr && (
+            review.pr_url ? (
+              <a
+                href={review.pr_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-purple-500/40 bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 text-[12px] font-medium transition-all shadow-sm group"
+                title="View Pull Request on GitHub"
+              >
+                <GitPullRequest className="h-3.5 w-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+                <span>{review.pr_number ? `Pull Request #${review.pr_number}` : "View PR on GitHub"}</span>
+                <ExternalLink className="h-3 w-3 opacity-70 group-hover:opacity-100" />
+              </a>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-purple-500/30 bg-purple-500/10 text-purple-300 text-[12px] font-medium">
+                <GitPullRequest className="h-3.5 w-3.5 text-purple-400" />
+                <span>PR Created</span>
+              </div>
+            )
+          )}
+
+          {/* Timestamp */}
+          <div className="text-[12px] text-slate-400 hidden sm:flex items-center gap-1 px-2.5 py-1 rounded bg-white/5 border border-white/5">
+            <Clock className="h-3 w-3 text-slate-500" />
             {(() => {
               const str = String(review.created_at || "").trim();
               const isoStr = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(str) ? str.replace(" ", "T") + "Z" : str;
@@ -306,30 +384,37 @@ export default function HistoryDetails({ reviewId }) {
               }) : review.created_at;
             })()}
           </div>
+
+          {/* Diff Mode Toggle (if revalidation chain exists) */}
           {latestReview && (
             <button
               onClick={() => setIsDiffMode(!isDiffMode)}
-              className={`px-3 py-1 rounded border text-[11px] font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-md border text-[12px] font-medium transition-all ${
                 isDiffMode 
-                  ? "border-sky-500/50 bg-sky-500/10 text-sky-400" 
-                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                  ? "border-sky-500/50 bg-sky-500/15 text-sky-300 shadow-sm" 
+                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
               }`}
             >
-              {isDiffMode ? "Viewing Diff (Original vs Latest)" : "View Diff"}
+              {isDiffMode ? "Viewing Diff (Original vs Latest)" : "Compare with Latest"}
             </button>
           )}
-          <div className="px-2 py-0.5 rounded border border-white/10 bg-white/5 text-[11px] font-medium text-slate-300">
-            Read-Only
+
+          <div className="px-2.5 py-1 rounded border border-white/10 bg-white/5 text-[11px] font-medium text-slate-400">
+            Snapshot Mode
           </div>
         </div>
       </div>
 
+      {/* Editor & AI Findings Sidebar */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div className="flex-1 relative border-r border-[#3a404b]">
           <div ref={editorHostRef} className="absolute inset-0" />
         </div>
         
-        <div className="relative shrink-0 flex flex-col h-full overflow-hidden transition-[width] duration-300" style={{ width: isFixesCollapsed ? '56px' : '360px' }}>
+        <div 
+          className="relative shrink-0 flex flex-col h-full overflow-hidden transition-[width] duration-300 bg-[#141821]" 
+          style={{ width: isFixesCollapsed ? '56px' : '380px' }}
+        >
           <ReviewFixesPanel 
             collapsed={isFixesCollapsed} 
             onToggleCollapse={() => setIsFixesCollapsed(!isFixesCollapsed)} 
@@ -338,6 +423,8 @@ export default function HistoryDetails({ reviewId }) {
             overallSeverity={review.overall_severity || "none"}
             isHistoryMode={true}
             validationReport={validationReport}
+            createdPrData={createdPrData}
+            originalReview={review}
           />
         </div>
       </div>
