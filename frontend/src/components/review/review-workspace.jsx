@@ -910,7 +910,8 @@ export function ReviewWorkspace() {
       const origContent = repoFiles[selectedFileName];
       const hasContentChanges = activeContent && origContent != null && activeContent.trim() !== origContent.trim();
       
-      if (hasContentChanges || hasFixes || (isAnalyzed && findings.length === 0)) {
+      // A file is ONLY modified if it has content changes compared to original repo code or has active applied fixes
+      if (hasContentChanges || hasFixes) {
         modifiedList.push({
           path: selectedFileName,
           content: activeContent || "",
@@ -936,8 +937,9 @@ export function ReviewWorkspace() {
               const fileContent = draft != null ? draft : (session?.analyzedCode || orig || "");
               const hasApplied = (session?.appliedFixes?.length || 0) > 0;
               const hasDraftChange = draft != null && orig != null && draft.trim() !== orig.trim();
+              const hasCodeChange = session?.analyzedCode != null && orig != null && session.analyzedCode.trim() !== orig.trim();
 
-              if (hasApplied || hasDraftChange || (session?.analysisState === "completed" && session?.findings?.length === 0)) {
+              if (hasApplied || hasDraftChange || hasCodeChange) {
                 modifiedList.push({
                   path: filePath,
                   content: fileContent,
