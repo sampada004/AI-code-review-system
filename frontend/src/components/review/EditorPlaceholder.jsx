@@ -8,7 +8,7 @@ function snippetLinesCount(str) {
   return str.split(/\r\n|\r|\n/).length;
 }
 
-import { CheckCircle2, FileCode2 } from "lucide-react";
+import { CheckCircle2, FileCode2, Sparkles } from "lucide-react";
 
 export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   analysisState = "idle",
@@ -27,6 +27,8 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
   onSelectFinding,
   appliedFixes = new Set(),
   onContentChange,
+  isFixesCollapsed = false,
+  onToggleFixes,
 }, ref) {
   const editorInstanceRef = useRef(null);
   const monacoInstanceRef = useRef(null);
@@ -369,6 +371,21 @@ export const EditorPlaceholder = forwardRef(function EditorPlaceholder({
             <span className="text-[12px] font-medium text-rose-400">
               {statusMessage}
             </span>
+          )}
+          {analysisState === "completed" && onToggleFixes && (
+            <button
+              type="button"
+              onClick={onToggleFixes}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium border transition ${
+                !isFixesCollapsed
+                  ? "border-sky-500/40 bg-sky-500/15 text-sky-300 shadow-sm shadow-sky-500/10"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+              title={isFixesCollapsed ? "Show Findings Panel" : "Hide Findings Panel"}
+            >
+              <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+              <span>{findings.length > 0 ? `Findings (${findings.length})` : "Findings"}</span>
+            </button>
           )}
           {!isAnalyzed && (
             <button

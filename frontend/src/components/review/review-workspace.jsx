@@ -1145,88 +1145,92 @@ export function ReviewWorkspace() {
                         selectedFindingIndex={selectedFindingIndex}
                         onSelectFinding={setSelectedFindingIndex}
                         appliedFixes={appliedFixes}
+                        isFixesCollapsed={isFixesCollapsed}
+                        onToggleFixes={() => setIsFixesCollapsed((prev) => !prev)}
                       />
                     </div>
-                  {analysisState === "completed" && !isFixesCollapsed ? (
-                    <div className="relative shrink-0" style={{ width: `${fixesWidth}px` }}>
-                      <div
-                        className="absolute inset-y-0 left-[-12px] z-10 w-2 cursor-col-resize hover:bg-sky-500/50"
-                        onPointerDown={beginResize}
-                        aria-label="Resize Fixes Panel"
-                      />
+                  {analysisState === "completed" ? (
+                    <div className="relative shrink-0 transition-[width] duration-300 ease-out" style={{ width: isFixesCollapsed ? "56px" : `${fixesWidth}px` }}>
+                      {!isFixesCollapsed && (
+                        <div
+                          className="absolute inset-y-0 left-[-12px] z-10 w-2 cursor-col-resize hover:bg-sky-500/50"
+                          onPointerDown={beginResize}
+                          aria-label="Resize Fixes Panel"
+                        />
+                      )}
                       <ReviewFixesPanel 
-                      collapsed={false} 
-                      onToggleCollapse={() => setIsFixesCollapsed(true)} 
-                      findings={findings}
-                      summary={analysisSummary}
-                      overallSeverity={overallSeverity}
-                      selectedFindingIndex={selectedFindingIndex}
-                      onSelectFinding={setSelectedFindingIndex}
-                      appliedFixes={appliedFixes}
-                      onApplyFix={(idx) => {
-                        editorRef.current?.applyFix(idx);
-                        setAppliedFixes(prev => {
-                          const next = new Set(prev).add(idx);
-                          if (analysisState === "completed" && analyzedFileNameForReview === selectedFileName) {
-                            saveReviewSession(
-                              selectedFileName,
-                              findings,
-                              analysisSummary,
-                              overallSeverity,
-                              "completed",
-                              next,
-                              originalReview,
-                              validationReport,
-                              createdPrData,
-                              isFixesCollapsed,
-                              analyzedCodeForActiveFile
-                            );
-                          }
-                          return next;
-                        });
-                      }}
-                      onUndoFix={(idx) => {
-                        editorRef.current?.undoFix(idx);
-                        setAppliedFixes(prev => {
-                          const next = new Set(prev);
-                          next.delete(idx);
-                          if (analysisState === "completed" && analyzedFileNameForReview === selectedFileName) {
-                            saveReviewSession(
-                              selectedFileName,
-                              findings,
-                              analysisSummary,
-                              overallSeverity,
-                              "completed",
-                              next,
-                              originalReview,
-                              validationReport,
-                              createdPrData,
-                              isFixesCollapsed,
-                              analyzedCodeForActiveFile
-                            );
-                          }
-                          return next;
-                        });
-                      }}
-                      onIgnoreFix={handleIgnoreFix}
-                      onRevalidate={handleRevalidate}
-                      isRevalidating={isRevalidating}
-                      isBackgroundValidating={isBackgroundValidating}
-                      validationReport={validationReport}
-                      backgroundValidationReport={backgroundValidationReport}
-                      originalReview={originalReview}
-                      onCreatePullRequest={() => handleOpenPRModal("single")}
-                      onOpenMultiFilePR={() => handleOpenPRModal("multi")}
-                      modifiedFilesCount={allModifiedFiles.length}
-                      onReanalyze={() => {
-                        let source = editorRef.current ? editorRef.current.getValue() : selectedFileContent;
-                        const language = getLanguageFromFilename(selectedFileName);
-                        handleAnalyze({ sourceCode: source, language });
-                      }}
-                      isAnalyzing={analysisState === "analyzing"}
-                      isCreatingPR={isCreatingPR}
-                      createdPrData={createdPrData}
-                    />
+                        collapsed={isFixesCollapsed} 
+                        onToggleCollapse={() => setIsFixesCollapsed((prev) => !prev)} 
+                        findings={findings}
+                        summary={analysisSummary}
+                        overallSeverity={overallSeverity}
+                        selectedFindingIndex={selectedFindingIndex}
+                        onSelectFinding={setSelectedFindingIndex}
+                        appliedFixes={appliedFixes}
+                        onApplyFix={(idx) => {
+                          editorRef.current?.applyFix(idx);
+                          setAppliedFixes(prev => {
+                            const next = new Set(prev).add(idx);
+                            if (analysisState === "completed" && analyzedFileNameForReview === selectedFileName) {
+                              saveReviewSession(
+                                selectedFileName,
+                                findings,
+                                analysisSummary,
+                                overallSeverity,
+                                "completed",
+                                next,
+                                originalReview,
+                                validationReport,
+                                createdPrData,
+                                isFixesCollapsed,
+                                analyzedCodeForActiveFile
+                              );
+                            }
+                            return next;
+                          });
+                        }}
+                        onUndoFix={(idx) => {
+                          editorRef.current?.undoFix(idx);
+                          setAppliedFixes(prev => {
+                            const next = new Set(prev);
+                            next.delete(idx);
+                            if (analysisState === "completed" && analyzedFileNameForReview === selectedFileName) {
+                              saveReviewSession(
+                                selectedFileName,
+                                findings,
+                                analysisSummary,
+                                overallSeverity,
+                                "completed",
+                                next,
+                                originalReview,
+                                validationReport,
+                                createdPrData,
+                                isFixesCollapsed,
+                                analyzedCodeForActiveFile
+                              );
+                            }
+                            return next;
+                          });
+                        }}
+                        onIgnoreFix={handleIgnoreFix}
+                        onRevalidate={handleRevalidate}
+                        isRevalidating={isRevalidating}
+                        isBackgroundValidating={isBackgroundValidating}
+                        validationReport={validationReport}
+                        backgroundValidationReport={backgroundValidationReport}
+                        originalReview={originalReview}
+                        onCreatePullRequest={() => handleOpenPRModal("single")}
+                        onOpenMultiFilePR={() => handleOpenPRModal("multi")}
+                        modifiedFilesCount={allModifiedFiles.length}
+                        onReanalyze={() => {
+                          let source = editorRef.current ? editorRef.current.getValue() : selectedFileContent;
+                          const language = getLanguageFromFilename(selectedFileName);
+                          handleAnalyze({ sourceCode: source, language });
+                        }}
+                        isAnalyzing={analysisState === "analyzing"}
+                        isCreatingPR={isCreatingPR}
+                        createdPrData={createdPrData}
+                      />
                     </div>
                   ) : null}
                   </div>

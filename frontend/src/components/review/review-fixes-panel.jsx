@@ -154,37 +154,41 @@ export function ReviewFixesPanel({
   const hasFindings = activeFindings.length > 0;
   return (
     <aside
-      className={`flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#141821] shadow-xl transition-[width] duration-300 ease-out ${
-        collapsed ? "w-full xl:w-[56px]" : "w-full xl:w-[360px]"
+      onClick={collapsed ? onToggleCollapse : undefined}
+      className={`flex h-full flex-col overflow-hidden rounded-lg border border-white/10 bg-[#141821] shadow-xl transition-[width] duration-300 ease-out select-none ${
+        collapsed ? "w-[56px] shrink-0 cursor-pointer hover:border-sky-500/40 hover:bg-[#181d28]" : "w-full"
       }`}
+      title={collapsed ? "Click to expand AI Findings" : undefined}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-white/8 px-4 py-4">
-        <div className={`${collapsed ? "opacity-0 pointer-events-none" : ""}`}>
-          <div className="flex items-center gap-2">
-            <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">
-              AI Analysis
+      <div className={`flex items-center border-b border-white/8 ${collapsed ? "justify-center p-3" : "justify-between gap-3 px-4 py-4"}`}>
+        {!collapsed ? (
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="text-[12px] uppercase tracking-[0.18em] text-slate-400">
+                AI Analysis
+              </div>
+              {overallSeverity !== "none" && (
+                <span
+                  className={`inline-block w-2 h-2 rounded-full ${overallSeverity === "high" ? "bg-rose-500" : overallSeverity === "medium" ? "bg-amber-500" : "bg-sky-500"}`}
+                />
+              )}
             </div>
-            {overallSeverity !== "none" && !collapsed && (
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${overallSeverity === "high" ? "bg-rose-500" : overallSeverity === "medium" ? "bg-amber-500" : "bg-sky-500"}`}
-              />
-            )}
+            <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[#e7ebf3]">
+              {hasFindings 
+                ? "Review Recommendations" 
+                : hasRun 
+                  ? "Analysis Complete"
+                  : "AI Code Review"}
+            </h2>
+            <p className="mt-1 text-[12px] text-slate-400">
+              {hasFindings 
+                ? "Suggested changes ranked by potential impact."
+                : hasRun
+                  ? "No code issues were detected."
+                  : "Run an analysis to get AI suggestions."}
+            </p>
           </div>
-          <h2 className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[#e7ebf3]">
-            {hasFindings 
-              ? "Review Recommendations" 
-              : hasRun 
-                ? "Analysis Complete"
-                : "AI Code Review"}
-          </h2>
-          <p className="mt-1 text-[12px] text-slate-400">
-            {hasFindings 
-              ? "Suggested changes ranked by potential impact."
-              : hasRun
-                ? "No code issues were detected."
-                : "Run an analysis to get AI suggestions."}
-          </p>
-        </div>
+        ) : null}
 
         <div className="flex items-center gap-1.5 shrink-0">
           {onReanalyze && !collapsed && (
@@ -202,12 +206,16 @@ export function ReviewFixesPanel({
 
           <button
             type="button"
-            onClick={onToggleCollapse}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCollapse();
+            }}
             aria-label={
               collapsed
                 ? "Expand AI Suggested Fixes"
                 : "Collapse AI Suggested Fixes"
             }
+            title={collapsed ? "Expand panel" : "Collapse panel"}
             className="grid h-8 w-8 place-items-center rounded-[4px] border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
           >
             {collapsed ? (
@@ -220,12 +228,29 @@ export function ReviewFixesPanel({
       </div>
 
       {collapsed ? (
-        <div className="flex flex-1 flex-col items-center gap-4 py-4 text-slate-500">
-          <SparkIcon className="h-5 w-5" />
-          <div className="h-px w-6 bg-white/10" />
-          <div
-            className={`h-2 w-2 rounded-full ${overallSeverity === "high" ? "bg-rose-500/80" : overallSeverity === "medium" ? "bg-amber-500/80" : overallSeverity === "low" ? "bg-sky-500/80" : "bg-emerald-500/80"}`}
-          />
+        <div className="flex flex-1 flex-col items-center justify-between py-6 text-slate-400">
+          <div className="flex flex-col items-center gap-3">
+            <div className="grid h-8 w-8 place-items-center rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <SparkIcon className="h-4 w-4" />
+            </div>
+            {findings.length > 0 ? (
+              <span className={`inline-flex items-center justify-center min-w-[20px] h-5 rounded-full px-1.5 text-[10px] font-bold ${
+                overallSeverity === "high" ? "bg-rose-500/20 text-rose-300 border border-rose-500/30" :
+                overallSeverity === "medium" ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+              }`}>
+                {findings.length}
+              </span>
+            ) : (
+              <span className="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </div>
+
+          <div className="rotate-90 whitespace-nowrap text-[11px] font-semibold uppercase tracking-widest text-slate-400 select-none">
+            {findings.length > 0 ? `${findings.length} Issues` : "AI Review"}
+          </div>
+
+          <ChevronLeft className="h-4 w-4 text-slate-500" />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
