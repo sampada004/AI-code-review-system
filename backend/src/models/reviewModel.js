@@ -3,6 +3,16 @@ const pool = require("../config/db");
 const mapReview = (row) => {
   if (!row) return null;
 
+  const toIso = (dateVal) => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return dateVal.toISOString();
+    try {
+      return new Date(dateVal).toISOString();
+    } catch {
+      return dateVal;
+    }
+  };
+
   return {
     id: row.id,
     user_id: row.user_id,
@@ -14,8 +24,8 @@ const mapReview = (row) => {
     review_status: row.review_status,
     ai_summary: row.ai_summary,
     overall_severity: row.overall_severity,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    created_at: toIso(row.created_at),
+    updated_at: toIso(row.updated_at),
     parent_review_id: row.parent_review_id,
     pr_url: row.pr_url,
     pr_number: row.pr_number,

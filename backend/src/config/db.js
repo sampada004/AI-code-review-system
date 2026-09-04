@@ -29,6 +29,7 @@ const resolvedConfig = {
   user: getEnv("DB_USER"),
   password: getEnv("DB_PASSWORD"),
   database: getEnv("DB_NAME") || "test",
+  timezone: "Z",
 };
 
 const useSsl = getEnv("DB_SSL") === "true" || (resolvedConfig.host && resolvedConfig.host.includes("tidbcloud.com"));

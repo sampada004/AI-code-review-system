@@ -4,21 +4,32 @@ import { useEffect, useState } from "react";
 import { ChevronRight, Clock, FileCode2, AlertCircle, AlertTriangle, CheckCircle2, Info, ShieldAlert, Wrench, History, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
+function parseUtcDate(dateInput) {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return dateInput;
+  let str = String(dateInput).trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+    str = str.replace(" ", "T") + "Z";
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 function timeAgo(dateString) {
   if (!dateString) return "Recently";
-  const date = new Date(dateString);
+  const date = parseUtcDate(dateString);
   const now = new Date();
-  const seconds = Math.floor((now - date) / 1000);
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   
-  if (isNaN(seconds) || seconds < 0) return "Just now";
-  if (seconds < 60) return `Just now`;
+  if (isNaN(seconds) || seconds < 10) return "Just now";
+  if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 const severityColors = {

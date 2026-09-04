@@ -5,19 +5,32 @@ import { apiUrl } from "@/lib/api";
 import { Search, Filter, AlertTriangle, CheckCircle2, AlertCircle, Info, ChevronRight, FileCode2, Clock, GitCommit } from "lucide-react";
 import Link from "next/link";
 
+function parseUtcDate(dateInput) {
+  if (!dateInput) return new Date();
+  if (dateInput instanceof Date) return dateInput;
+  let str = String(dateInput).trim();
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+    str = str.replace(" ", "T") + "Z";
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 function timeAgo(dateString) {
-  const date = new Date(dateString);
+  if (!dateString) return "Recently";
+  const date = parseUtcDate(dateString);
   const now = new Date();
-  const seconds = Math.floor((now - date) / 1000);
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   
-  if (seconds < 60) return `Just now`;
+  if (isNaN(seconds) || seconds < 10) return `Just now`;
+  if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 const severityColors = {
@@ -261,7 +274,15 @@ export default function HistoryWorkspace() {
                       </td>
                       <td className="py-4 px-6 align-middle">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[13px] text-slate-300">{new Date(review.created_at).toLocaleDateString()}</span>
+                          <span className="text-[13px] text-slate-300">
+                            {parseUtcDate(review.created_at).toLocaleDateString(undefined, {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            })}
+                          </span>
                           <span className="text-[11px] text-slate-500 flex items-center gap-1">
                             <Clock className="h-3 w-3" /> {timeAgo(review.created_at)}
                           </span>

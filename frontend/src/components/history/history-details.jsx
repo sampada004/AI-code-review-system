@@ -293,7 +293,18 @@ export default function HistoryDetails({ reviewId }) {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-[12px] text-slate-400">
-            {new Date(review.created_at).toLocaleString()}
+            {(() => {
+              const str = String(review.created_at || "").trim();
+              const isoStr = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(str) && !str.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(str) ? str.replace(" ", "T") + "Z" : str;
+              const d = new Date(isoStr);
+              return !isNaN(d.getTime()) ? d.toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              }) : review.created_at;
+            })()}
           </div>
           {latestReview && (
             <button
