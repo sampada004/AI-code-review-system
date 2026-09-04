@@ -149,6 +149,7 @@ export function ReviewFixesPanel({
   isCreatingPR = false,
   createdPrData = null,
   modifiedFilesCount = 0,
+  isFileModified = false,
   onOpenMultiFilePR = null,
   onReanalyze = null,
   isAnalyzing = false,
@@ -479,7 +480,7 @@ export function ReviewFixesPanel({
                 <ChevronRight className="h-3 w-3" />
               </a>
             </div>
-          ) : validationReport ? (
+          ) : (validationReport && isFileModified) ? (
             <div className="space-y-2 mt-1">
               <div className="relative group">
                 <button
@@ -519,10 +520,27 @@ export function ReviewFixesPanel({
                 </button>
               )}
             </div>
+          ) : validationReport && !isFileModified ? (
+            <div className="rounded-[4px] border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Code is clean — no changes needed</span>
+              </div>
+            </div>
           ) : null}
 
           <div className="text-[11px] text-slate-400 text-center">
-            {createdPrData ? "PR opened on GitHub. Run a new analysis after pushing updates." : validationReport ? "Merge validated fixes directly to GitHub." : appliedFixes.size > 0 ? "Revalidate fixes to ensure they didn't introduce new issues." : "Apply fixes individually or finalize after review."}
+            {createdPrData
+              ? "PR opened on GitHub. Run a new analysis after pushing updates."
+              : validationReport && isFileModified
+              ? "Merge validated fixes directly to GitHub."
+              : validationReport && !isFileModified
+              ? "No file modifications were made."
+              : appliedFixes.size > 0
+              ? "Revalidate fixes to ensure they didn't introduce new issues."
+              : findings.length === 0
+              ? "Clean file — no issues detected."
+              : "Apply fixes individually or edit code in the editor."}
           </div>
         </div>
       ) : null}

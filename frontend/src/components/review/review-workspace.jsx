@@ -50,6 +50,16 @@ function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
 
+function normalizeCode(str) {
+  if (str == null) return "";
+  return String(str).replace(/\r\n/g, "\n").trim();
+}
+
+function hasCodeDiff(codeA, codeB) {
+  if (codeA == null || codeB == null) return false;
+  return normalizeCode(codeA) !== normalizeCode(codeB);
+}
+
 function calculateSimilarity(str1, str2) {
   if (!str1 || !str2) return 0;
   const tokenize = (s) => s.toLowerCase().match(/\w+/g) || [];
@@ -187,6 +197,7 @@ export function ReviewWorkspace() {
   const [fetchError, setFetchError] = useState(null);
   const [repoTree, setRepoTree] = useState([]);
   const [repoFiles, setRepoFiles] = useState({});
+  const [baselineFiles, setBaselineFiles] = useState({});
   const [projectContext, setProjectContext] = useState(null);
   const [isDetectingContext, setIsDetectingContext] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState(paramFile || "");
@@ -217,9 +228,13 @@ export function ReviewWorkspace() {
             const session = JSON.parse(window.localStorage.getItem(key));
             if (session && session.analysisState === "completed" && session.fileName === filePath) {
               const draft = window.localStorage.getItem(`${draftPrefix}${filePath}`);
+              const baseContent = baselineFiles[filePath] ?? repoFiles[filePath];
+              const hasApplied = (session?.appliedFixes?.length || 0) > 0;
               let hasChanges = false;
-              if (draft != null && session.analyzedCode != null) {
-                hasChanges = draft.trim() !== session.analyzedCode.trim();
+              if (hasApplied) {
+                hasChanges = true;
+              } else if (draft != null && baseContent != null) {
+                hasChanges = hasCodeDiff(draft, baseContent);
               }
               newMap[filePath] = {
                 isAnalyzed: true,
@@ -233,7 +248,7 @@ export function ReviewWorkspace() {
       }
       setFileStatusMap(newMap);
     } catch (e) {}
-  }, [repoId]);
+  }, [repoId, baselineFiles, repoFiles]);
 
   // Hydrate layout preferences from localStorage
   useEffect(() => {
@@ -359,11 +374,28 @@ export function ReviewWorkspace() {
     if (selectedFileName && repoId && typeof window !== "undefined") {
       setRepoFiles((prev) => ({ ...prev, [selectedFileName]: newContent }));
       try {
-        window.localStorage.setItem(`${STORAGE_KEYS.draftPrefix}${repoId}_${selectedFileName}`, newContent);
+        const baseContent = baselineFiles[selectedFileName];
+        if (baseContent != null && !hasCodeDiff(newContent, baseContent)) {
+          window.localStorage.removeItem(`${STORAGE_KEYS.draftPrefix}${repoId}_${selectedFileName}`);
+        } else {
+          window.localStorage.setItem(`${STORAGE_KEYS.draftPrefix}${repoId}_${selectedFileName}`, newContent);
+        }
       } catch (e) {}
       refreshFileStatusMap();
     }
-  }, [selectedFileName, repoId, refreshFileStatusMap]);
+  }, [selectedFileName, repoId, baselineFiles, refreshFileStatusMap]);
+
+  // Determine if current active file has been modified compared to baseline
+  const isCurrentFileModified = useMemo(() => {
+    if (!selectedFileName) return false;
+    if (appliedFixes.size > 0) return true;
+    const activeContent = editorRef.current ? editorRef.current.getValue() : selectedFileContent;
+    const baseContent = baselineFiles[selectedFileName] ?? repoFiles[selectedFileName];
+    if (baseContent != null && activeContent != null) {
+      return hasCodeDiff(activeContent, baseContent);
+    }
+    return false;
+  }, [selectedFileName, appliedFixes, selectedFileContent, baselineFiles, repoFiles]);
 
   // Determine if active file is analyzed and whether it has unanalyzed changes
   const isCurrentFileAnalyzed = useMemo(() => {
@@ -519,6 +551,7 @@ export function ReviewWorkspace() {
         if (!mounted) return;
         setRepoTree(data.tree || []);
         setRepoFiles(data.files || {});
+        setBaselineFiles(data.files || {});
         
         // Determine file to select: URL param > localStorage lastFile > firstFile
         const paths = Object.keys(data.files || {});
@@ -555,6 +588,7 @@ export function ReviewWorkspace() {
               .then(res => res.ok ? res.text() : Promise.reject(new Error(`Failed to fetch (${res.status})`)))
               .then(text => {
                 if (!mounted) return;
+                setBaselineFiles(prev => ({ ...prev, [targetFile]: text }));
                 setRepoFiles(prev => ({ ...prev, [targetFile]: text }));
                 setSelectedFileContent(text);
               })
@@ -641,6 +675,7 @@ export function ReviewWorkspace() {
           const res = await fetch(rawUrl, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
           if (res.ok) {
             const text = await res.text();
+            setBaselineFiles((prev) => ({ ...prev, [name]: text }));
             setRepoFiles((prev) => ({ ...prev, [name]: text }));
             setSelectedFileContent(text);
           }
@@ -908,14 +943,14 @@ export function ReviewWorkspace() {
     // 1. Current active file in editor
     if (selectedFileName) {
       const activeContent = editorRef.current ? editorRef.current.getValue() : selectedFileContent;
-      let hasFixes = appliedFixes.size > 0;
-      let isAnalyzed = analysisState === "completed" && analyzedFileNameForReview === selectedFileName;
+      const baseContent = baselineFiles[selectedFileName] ?? repoFiles[selectedFileName];
+      const hasFixes = appliedFixes.size > 0;
+      const isAnalyzed = analysisState === "completed" && analyzedFileNameForReview === selectedFileName;
       
-      const origContent = repoFiles[selectedFileName];
-      const hasContentChanges = activeContent && origContent != null && activeContent.trim() !== origContent.trim();
+      const hasContentChanges = baseContent != null && activeContent != null && hasCodeDiff(activeContent, baseContent);
       
       // A file is ONLY modified if it has content changes compared to original repo code or has active applied fixes
-      if (hasContentChanges || hasFixes) {
+      if (hasFixes || hasContentChanges) {
         modifiedList.push({
           path: selectedFileName,
           content: activeContent || "",
@@ -937,13 +972,12 @@ export function ReviewWorkspace() {
             try {
               const session = JSON.parse(window.localStorage.getItem(key));
               const draft = window.localStorage.getItem(`${draftPrefix}${filePath}`);
-              const orig = repoFiles[filePath];
-              const fileContent = draft != null ? draft : (session?.analyzedCode || orig || "");
+              const baseContent = baselineFiles[filePath] ?? repoFiles[filePath];
               const hasApplied = (session?.appliedFixes?.length || 0) > 0;
-              const hasDraftChange = draft != null && orig != null && draft.trim() !== orig.trim();
-              const hasCodeChange = session?.analyzedCode != null && orig != null && session.analyzedCode.trim() !== orig.trim();
+              const hasDraftChange = draft != null && baseContent != null && hasCodeDiff(draft, baseContent);
 
-              if (hasApplied || hasDraftChange || hasCodeChange) {
+              if (hasApplied || hasDraftChange) {
+                const fileContent = draft != null ? draft : (session?.analyzedCode || baseContent || "");
                 modifiedList.push({
                   path: filePath,
                   content: fileContent,
@@ -959,8 +993,8 @@ export function ReviewWorkspace() {
           const filePath = key.substring(draftPrefix.length);
           if (!seenPaths.has(filePath)) {
             const draft = window.localStorage.getItem(key);
-            const orig = repoFiles[filePath];
-            if (draft != null && orig != null && draft.trim() !== orig.trim()) {
+            const baseContent = baselineFiles[filePath] ?? repoFiles[filePath];
+            if (draft != null && baseContent != null && hasCodeDiff(draft, baseContent)) {
               modifiedList.push({
                 path: filePath,
                 content: draft,
@@ -976,7 +1010,7 @@ export function ReviewWorkspace() {
     } catch (e) {}
 
     return modifiedList;
-  }, [repoId, selectedFileName, selectedFileContent, appliedFixes, analysisState, analyzedFileNameForReview, findings, repoFiles, fileStatusMap]);
+  }, [repoId, selectedFileName, selectedFileContent, appliedFixes, analysisState, analyzedFileNameForReview, findings, baselineFiles, repoFiles, fileStatusMap]);
 
   const handleOpenPRModal = (mode = "single") => {
     setMultiPRInitialMode(mode);
@@ -1227,6 +1261,7 @@ export function ReviewWorkspace() {
                         onCreatePullRequest={() => handleOpenPRModal("single")}
                         onOpenMultiFilePR={() => handleOpenPRModal("multi")}
                         modifiedFilesCount={allModifiedFiles.length}
+                        isFileModified={isCurrentFileModified}
                         onReanalyze={() => {
                           let source = editorRef.current ? editorRef.current.getValue() : selectedFileContent;
                           const language = getLanguageFromFilename(selectedFileName);
@@ -1267,6 +1302,7 @@ export function ReviewWorkspace() {
         allModifiedFiles={allModifiedFiles}
         onSubmitPR={handleSubmitPR}
         isCreatingPR={isCreatingPR}
+        isFileModified={isCurrentFileModified}
         initialMode={multiPRInitialMode}
       />
 

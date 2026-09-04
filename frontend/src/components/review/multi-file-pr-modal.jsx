@@ -13,6 +13,7 @@ export function MultiFilePRModal({
   allModifiedFiles = [], // Array of { path, content, isAnalyzed, findingsCount, hasAppliedFixes }
   onSubmitPR,
   isCreatingPR = false,
+  isFileModified = false,
   initialMode = "multi" // "single" | "multi"
 }) {
   const [mode, setMode] = useState(initialMode); // "single" | "multi"
@@ -25,19 +26,20 @@ export function MultiFilePRModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    setMode(initialMode);
+    const actualModifiedPaths = allModifiedFiles.map((f) => f.path);
+    const hasCurrentModified = isFileModified || actualModifiedPaths.includes(currentFileName);
     
-    // Default select all modified files or the current file
-    if (initialMode === "single" && currentFileName) {
+    if (initialMode === "single" && hasCurrentModified && currentFileName) {
+      setMode("single");
       setSelectedFilePaths(new Set([currentFileName]));
     } else {
-      const allPaths = allModifiedFiles.map((f) => f.path);
-      setSelectedFilePaths(new Set(allPaths.length > 0 ? allPaths : currentFileName ? [currentFileName] : []));
+      setMode(actualModifiedPaths.length > 1 ? "multi" : "single");
+      setSelectedFilePaths(new Set(actualModifiedPaths.length > 0 ? actualModifiedPaths : hasCurrentModified && currentFileName ? [currentFileName] : []));
     }
 
     const defaultBranch = `inspectra/ai-fixes-${Date.now().toString().slice(-6)}`;
     setCustomBranch(defaultBranch);
-  }, [isOpen, initialMode, currentFileName, allModifiedFiles]);
+  }, [isOpen, initialMode, currentFileName, allModifiedFiles, isFileModified]);
 
   // Update title & body when mode or selection changes
   useEffect(() => {
