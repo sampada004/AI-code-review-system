@@ -346,7 +346,6 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
     "minimax/minimax-m3:free",
     "minimax/minimax-m2.7:free",
     "poolside/laguna-s-2.1:free",
-    "z-ai/glm-5.2:free",
     "inclusionai/ling-3.0-flash-fin:free",
     "cohere/north-mini-code:free"
   ];
