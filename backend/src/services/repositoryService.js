@@ -94,10 +94,15 @@ async function getRepositoryFile(repoId, path, branch) {
   return res.text();
 }
 
+async function deleteRepository(repoId) {
+  return repositoryModel.deleteById(repoId);
+}
+
 module.exports = {
   createRepository,
   getRepository,
   getUserRepositories,
   getRepositoryTree,
   getRepositoryFile,
+  deleteRepository,
 };

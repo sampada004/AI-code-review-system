@@ -50,10 +50,19 @@ async function updateProjectContext(id, projectContext) {
   return findById(id);
 }
 
+async function deleteById(id) {
+  const [result] = await pool.execute(
+    `DELETE FROM repositories WHERE id = ?`,
+    [id]
+  );
+  return result.affectedRows > 0;
+}
+
 module.exports = {
   create,
   findById,
   findByUser,
   updateProjectContext,
+  deleteById,
 };
       

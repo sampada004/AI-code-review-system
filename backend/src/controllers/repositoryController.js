@@ -174,6 +174,23 @@ async function detectContext(req, res, next) {
   }
 }
 
+async function deleteRepository(req, res, next) {
+  try {
+    const repo = await repositoryService.getRepository(req.params.id);
+    if (!repo) {
+      return res.status(404).json({ success: false, message: "Repository not found" });
+    }
+    if (repo.user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+
+    await repositoryService.deleteRepository(req.params.id);
+    res.status(200).json({ success: true, message: "Repository disconnected successfully" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   createRepository,
   getRepositories,
@@ -181,5 +198,6 @@ module.exports = {
   getRepositoryTree,
   getRepositoryFile,
   createPullRequest,
-  detectContext
+  detectContext,
+  deleteRepository,
 };

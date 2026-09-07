@@ -11,4 +11,5 @@ router.get("/:id/tree", authMiddleware, repositoryController.getRepositoryTree);
 router.get("/:id/file", authMiddleware, repositoryController.getRepositoryFile);
 router.post("/:id/detect-context", authMiddleware, repositoryController.detectContext);
 router.post("/:id/pull-request", authMiddleware, repositoryController.createPullRequest);
+router.delete("/:id", authMiddleware, repositoryController.deleteRepository);
 module.exports = router;
