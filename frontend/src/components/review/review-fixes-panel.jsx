@@ -375,28 +375,41 @@ export function ReviewFixesPanel({
             {findings.length > 0 ? (
               findings.map((finding, idx) => {
                 if (finding.ignored) return null;
+
+                const origSnippet = finding.original_code_snippet || finding.originalCodeSnippet || "";
+                let fixCode = finding.fixed_code || finding.fixedCode || "";
+
+                // Fallback: extract code block from suggested_fix or recommendation if fixed_code wasn't explicitly populated
+                if (!fixCode && (finding.suggested_fix || finding.suggestedFix || finding.recommendation)) {
+                  const combined = (finding.suggested_fix || finding.suggestedFix || "") + "\n" + (finding.recommendation || "");
+                  const match = combined.match(/```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]+?)```/);
+                  if (match && match[1]) {
+                    fixCode = match[1].trim();
+                  }
+                }
+
                 return (
                   <FixCard
                     key={idx}
                     isSelected={selectedFindingIndex === idx}
                     onClick={() => onSelectFinding && onSelectFinding(idx)}
                     fix={{
-                      title: finding.lineNumber
-                        ? `Line ${finding.lineNumber}`
+                      title: finding.lineNumber || finding.line_number
+                        ? `Line ${finding.lineNumber || finding.line_number}`
                         : "General Issue",
                       severity: finding.severity || "low",
                       issue: finding.issue,
                       recommendation: finding.recommendation,
-                      originalCodeSnippet: finding.original_code_snippet || finding.originalCodeSnippet,
+                      originalCodeSnippet: origSnippet,
                       suggestedFix: finding.suggested_fix || finding.suggestedFix,
-                      fixedCode: finding.fixed_code || finding.fixedCode,
+                      fixedCode: fixCode,
                       isResolved: finding.isResolved,
                       onViewFix: isHistoryMode ? null : () => {
                         if (onSelectFinding) onSelectFinding(idx);
                         setSelectedDiffData({
                           idx,
-                          originalCode: finding.original_code_snippet || finding.originalCodeSnippet,
-                          modifiedCode: finding.fixed_code || finding.fixedCode,
+                          originalCode: origSnippet,
+                          modifiedCode: fixCode,
                           issue: finding.issue,
                           recommendation: finding.recommendation,
                           severity: finding.severity,

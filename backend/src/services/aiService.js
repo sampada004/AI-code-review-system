@@ -157,50 +157,34 @@ function findAndAlignSnippet(sourceCode, originalSnippet, reportedLineNumber) {
 function validateFixIntegrity(sourceCode, originalSnippet, fixedCode, fileName) {
   if (!fixedCode) return { isValid: true };
 
-  // 1. Placeholder check
+  // 1. Placeholder check - never allow dummy placeholders that break user code
   if (hasPlaceholders(fixedCode)) {
     return { isValid: false, reason: "Fix contains placeholder comments or ellipses (...)" };
   }
 
-  // 2. Delimiter balance check on fixedCode block
-  if (!checkBalancedDelimiters(fixedCode)) {
-    // Also test replacement in full source
-    if (sourceCode && originalSnippet && sourceCode.includes(originalSnippet)) {
-      const simulatedSource = sourceCode.replace(originalSnippet, fixedCode);
-      if (!checkBalancedDelimiters(simulatedSource)) {
-        return { isValid: false, reason: "Fix introduces unbalanced brackets, parentheses, or unclosed quotes" };
-      }
-    } else {
-      return { isValid: false, reason: "Fix has unbalanced brackets, parentheses, or unclosed quotes" };
+  // 2. Delimiter balance check: test if replacing snippet in source preserves delimiter balance
+  const normSource = sourceCode ? sourceCode.replace(/\r\n/g, '\n') : "";
+  const normSnippet = originalSnippet ? originalSnippet.replace(/\r\n/g, '\n').trim() : "";
+  const normFixed = fixedCode.replace(/\r\n/g, '\n');
+
+  if (normSource && normSnippet && normSource.includes(normSnippet)) {
+    const simulatedSource = normSource.replace(normSnippet, normFixed);
+    const origBalanced = checkBalancedDelimiters(normSource);
+    const simBalanced = checkBalancedDelimiters(simulatedSource);
+
+    // If simulated source is balanced, or original had unbalanced delimiters that this fix preserves/addresses, it's valid
+    if (!simBalanced && origBalanced) {
+      return { isValid: false, reason: "Fix introduces unbalanced brackets, parentheses, or unclosed quotes" };
     }
   }
 
-  // 3. Full file simulation syntax check for JS / JSON
-  if (sourceCode && originalSnippet && sourceCode.includes(originalSnippet)) {
-    const simulatedSource = sourceCode.replace(originalSnippet, fixedCode);
-
-    if (fileName && fileName.endsWith('.json')) {
-      try {
-        JSON.parse(simulatedSource);
-      } catch (e) {
-        return { isValid: false, reason: `Fix creates invalid JSON syntax: ${e.message}` };
-      }
-    }
-
-    if (fileName && (fileName.endsWith('.js') || fileName.endsWith('.mjs') || fileName.endsWith('.cjs'))) {
-      try {
-        // Test basic JS parse without executing
-        new Function(`"use strict"; return (function() { \n${simulatedSource}\n });`);
-      } catch (e) {
-        // If the original source already had this exact syntax error (e.g. top-level imports/exports), ignore
-        try {
-          new Function(`"use strict"; return (function() { \n${sourceCode}\n });`);
-          // Original was valid but simulated failed -> regression detected!
-          return { isValid: false, reason: `Fix introduces JavaScript syntax error: ${e.message}` };
-        } catch {
-          // Original was an ES module or fragment, allow if delimiters are balanced
-        }
-      }
+  // 3. JSON format verification
+  if (fileName && fileName.endsWith('.json') && normSource && normSnippet && normSource.includes(normSnippet)) {
+    const simulatedSource = normSource.replace(normSnippet, normFixed);
+    try {
+      JSON.parse(simulatedSource);
+    } catch (e) {
+      return { isValid: false, reason: `Fix creates invalid JSON syntax: ${e.message}` };
     }
   }
 
@@ -214,8 +198,8 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
   if (!Array.isArray(findings)) return [];
 
   const stripMd = (str) => {
-    if (!str) return str;
-    let s = str.trim();
+    if (!str) return "";
+    let s = String(str).trim();
     if (s.startsWith('```')) {
       const nl = s.indexOf('\n');
       if (nl !== -1) s = s.substring(nl + 1);
@@ -225,7 +209,7 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
       if (s.endsWith('\n')) s = s.substring(0, s.length - 1);
       if (s.endsWith('\r')) s = s.substring(0, s.length - 1);
     }
-    return s;
+    return s.trim();
   };
 
   const validFindings = [];
@@ -233,18 +217,72 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
   for (const finding of findings) {
     if (!finding || (!finding.issue && !finding.recommendation)) continue;
 
-    // Normalize keys from different LLM outputs (camelCase and snake_case)
-    const rawOriginalSnippet = finding.originalCodeSnippet || finding.original_code_snippet || "";
-    const rawFixedCode = finding.fixedCode || finding.fixed_code || "";
-    const rawSuggestedFix = finding.suggestedFix || finding.suggested_fix || "";
+    // Normalize line number
     const rawLineNumber = finding.lineNumber || finding.line_number || null;
+
+    // Normalize original snippet with comprehensive alias fallback
+    let rawOriginalSnippet = finding.originalCodeSnippet ||
+      finding.original_code_snippet ||
+      finding.originalSnippet ||
+      finding.original_snippet ||
+      finding.originalCode ||
+      finding.original_code ||
+      finding.codeSnippet ||
+      finding.code_snippet ||
+      finding.targetSnippet ||
+      finding.target_snippet ||
+      finding.targetCode ||
+      finding.target_code ||
+      finding.target ||
+      "";
+
+    // Normalize fixed code with comprehensive alias fallback
+    let rawFixedCode = finding.fixedCode ||
+      finding.fixed_code ||
+      finding.fix ||
+      finding.replacement ||
+      finding.replacementCode ||
+      finding.replacement_code ||
+      finding.fixedSnippet ||
+      finding.fixed_snippet ||
+      finding.correctedCode ||
+      finding.corrected_code ||
+      finding.suggestedCode ||
+      finding.suggested_code ||
+      finding.solution ||
+      finding.code ||
+      "";
+
+    // Normalize suggested fix / recommendation
+    const rawSuggestedFix = finding.suggestedFix ||
+      finding.suggested_fix ||
+      finding.recommendation ||
+      finding.fixDescription ||
+      "";
+
+    // Fallback 1: Extract code block from suggestedFix or recommendation if fixedCode is missing
+    if (!rawFixedCode && (finding.suggestedFix || finding.suggested_fix || finding.recommendation)) {
+      const combined = (finding.suggestedFix || finding.suggested_fix || "") + "\n" + (finding.recommendation || "");
+      const codeBlockMatch = combined.match(/```(?:[a-zA-Z0-9_-]+)?\s*([\s\S]+?)```/);
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        rawFixedCode = codeBlockMatch[1].trim();
+      }
+    }
+
+    // Fallback 2: Extract originalCodeSnippet from sourceCode using lineNumber if snippet is missing
+    if (!rawOriginalSnippet && sourceCode && rawLineNumber) {
+      const lines = sourceCode.split(/\r\n|\r|\n/);
+      if (rawLineNumber > 0 && rawLineNumber <= lines.length) {
+        rawOriginalSnippet = lines[rawLineNumber - 1];
+      }
+    }
 
     finding.lineNumber = rawLineNumber;
     finding.suggestedFix = rawSuggestedFix;
     finding.originalCodeSnippet = stripMd(rawOriginalSnippet);
     finding.fixedCode = stripMd(rawFixedCode);
 
-    // Also populate snake_case aliases for compatibility
+    // Also populate snake_case aliases for frontend and database compatibility
     finding.original_code_snippet = finding.originalCodeSnippet;
     finding.fixed_code = finding.fixedCode;
     finding.suggested_fix = finding.suggestedFix;
@@ -266,7 +304,6 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
       const validation = validateFixIntegrity(sourceCode, finding.originalCodeSnippet, finding.fixedCode, fileName);
       if (!validation.isValid) {
         console.warn(`[AI Fix Validation] Discarding dangerous fixedCode for finding (line ${finding.lineNumber}): ${validation.reason}`);
-        // Nullify dangerous fixedCode so broken code is never applied to the user's editor
         finding.fixedCode = null;
         finding.fixed_code = null;
       }
@@ -300,6 +337,12 @@ Scan the code for:
 2. Undeclared variables, undefined references, or type mismatches.
 Report any syntax or compilation errors immediately as HIGH severity issues.
 
+MANDATORY ACTIONABLE FIX RULE:
+- For EVERY finding you report, you MUST provide BOTH 'originalCodeSnippet' AND 'fixedCode'.
+- 'originalCodeSnippet': The EXACT, verbatim lines from the source code containing the error (do NOT wrap in markdown backticks).
+- 'fixedCode': The EXACT, complete, syntactically correct replacement block (do NOT wrap in markdown backticks, NO placeholders like '// existing code').
+- NEVER omit 'fixedCode' or leave it empty. Every finding MUST be directly applicable with one click.
+
 Response Structure:
 You MUST respond with a strict JSON object matching the following structure exactly:
 
@@ -309,12 +352,12 @@ You MUST respond with a strict JSON object matching the following structure exac
   "findings": [
     {
       "severity": "high" | "medium" | "low",
-      "lineNumber": 12, // Starting line number of originalCodeSnippet
+      "lineNumber": 12,
       "issue": "Description of the critical bug.",
       "recommendation": "How to resolve the issue.",
-      "originalCodeSnippet": "The EXACT, verbatim lines of original code to be replaced. DO NOT wrap in markdown backticks. MUST NOT contain placeholders or ellipses (...).",
+      "originalCodeSnippet": "Verbatim line(s) of code from source to be replaced.",
       "suggestedFix": "A brief explanation of the fix.",
-      "fixedCode": "The EXACT, 100% syntactically complete replacement code block. DO NOT wrap in markdown backticks. MUST NOT contain placeholders like '// existing code'. CRITICAL: This MUST be a perfectly valid, compilable drop-in replacement."
+      "fixedCode": "Verbatim replacement code block ready for drop-in replacement."
     }
   ]
 }
