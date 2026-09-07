@@ -64,16 +64,32 @@ async function me(req, res, next) {
 
 async function logout(req, res, next) {
   try {
+    const token = req.cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    if (token) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || "inspectra-jwt-secret");
+        if (decoded && decoded.id) {
+          await githubAccountModel.deleteByUserId(decoded.id);
+        }
+      } catch (e) {
+        // Token expired/invalid, proceed
+      }
+    } else if (req.user?.id) {
+      await githubAccountModel.deleteByUserId(req.user.id);
+    }
+
     res.clearCookie("auth_token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
     });
+    res.clearCookie("oauth_state", { path: "/" });
 
     res.status(200).json({
       success: true,
-      message: "Logged out successfully",
+      message: "Logged out and GitHub account disconnected successfully",
     });
   } catch (error) {
     next(error);

@@ -49,7 +49,16 @@ async function findByUserId(userId) {
   };
 }
 
+async function deleteByUserId(userId) {
+  const [result] = await pool.execute(
+    "DELETE FROM github_accounts WHERE user_id = ?",
+    [userId]
+  );
+  return result.affectedRows > 0;
+}
+
 module.exports = {
   createOrUpdate,
   findByUserId,
+  deleteByUserId,
 };

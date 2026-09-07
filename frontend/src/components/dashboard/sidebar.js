@@ -32,6 +32,7 @@ export function DashboardSidebar({
   const handleLogout = async (e) => {
     e?.preventDefault?.();
     try {
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("auth_token");
         window.sessionStorage.clear();
@@ -40,6 +41,7 @@ export function DashboardSidebar({
       const timeoutId = setTimeout(() => controller.abort(), 1500);
       await fetch(apiUrl("/auth/logout"), {
         method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         credentials: "include",
         signal: controller.signal,
       }).catch(() => {});
