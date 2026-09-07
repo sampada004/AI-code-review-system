@@ -94,12 +94,26 @@ export default function RecentRepos() {
       }
 
       // Successfully removed
-      setRepos((prev) => prev.filter((r) => r.id !== repoToDisconnect.id));
+      const disconnectedId = repoToDisconnect.id;
+      setRepos((prev) => prev.filter((r) => r.id !== disconnectedId));
       setRepoToDisconnect(null);
 
-      // Notify other components (e.g. analytics, charts)
+      // Clean up localStorage review sessions & drafts for this repo
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("repositories:changed", { detail: { disconnectedId: repoToDisconnect.id } }));
+        try {
+          const keysToRemove = [];
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const k = window.localStorage.key(i);
+            if (k && (k.includes(`${disconnectedId}_`) || k.endsWith(`_${disconnectedId}`) || k.includes(`lastFile_${disconnectedId}`))) {
+              keysToRemove.push(k);
+            }
+          }
+          keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+        } catch (e) {}
+
+        // Notify other components (Dashboard Analytics, Recent Reviews, History)
+        window.dispatchEvent(new CustomEvent("repositories:changed", { detail: { disconnectedId } }));
+        window.dispatchEvent(new CustomEvent("reviews:changed", { detail: { disconnectedRepoId: disconnectedId } }));
       }
     } catch (err) {
       setDisconnectError(err.message || "Something went wrong while disconnecting.");
@@ -210,7 +224,7 @@ export default function RecentRepos() {
                 <div>
                   <h3 className="text-base font-bold text-white tracking-tight">Disconnect Repository?</h3>
                   <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                    Are you sure you want to disconnect <span className="text-slate-200 font-semibold">{repoToDisconnect.name}</span>? This will remove it from your workspace. Existing review history will remain safe.
+                    If you disconnect <span className="text-slate-200 font-semibold">{repoToDisconnect.name}</span>, all of its analysis data, code alerts, and review history will also be permanently removed from your workspace.
                   </p>
                 </div>
               </div>
@@ -244,7 +258,7 @@ export default function RecentRepos() {
                   ) : (
                     <>
                       <Trash2 className="h-3.5 w-3.5" />
-                      Disconnect
+                      OK, Disconnect
                     </>
                   )}
                 </button>

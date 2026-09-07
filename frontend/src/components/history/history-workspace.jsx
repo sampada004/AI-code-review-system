@@ -140,7 +140,10 @@ export default function HistoryWorkspace() {
         }
       }
 
-      setReviews(reviewsData);
+      // Exclude reviews belonging to disconnected repositories
+      const validReviews = reviewsData.filter(r => !r.repository_id || reposMap[r.repository_id]);
+
+      setReviews(validReviews);
       setRepositories(reposMap);
     } catch (err) {
       setError(err.message || "Failed to load history");
@@ -151,6 +154,22 @@ export default function HistoryWorkspace() {
 
   useEffect(() => {
     fetchReviews();
+
+    function onDataChanged() {
+      fetchReviews();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("repositories:changed", onDataChanged);
+      window.addEventListener("reviews:changed", onDataChanged);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("repositories:changed", onDataChanged);
+        window.removeEventListener("reviews:changed", onDataChanged);
+      }
+    };
   }, []);
 
   // Compute metric counts for filter pills

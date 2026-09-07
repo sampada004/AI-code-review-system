@@ -117,7 +117,8 @@ async function getReviewsByUserId(
       r.pr_url,
       r.pr_number
     FROM reviews r
-    WHERE r.user_id = ?
+    LEFT JOIN repositories repo ON r.repository_id = repo.id
+    WHERE r.user_id = ? AND (r.repository_id IS NULL OR repo.id IS NOT NULL)
     ORDER BY r.created_at DESC
     LIMIT ? OFFSET ?`,
     [userId, Number(limit), Number(offset)]

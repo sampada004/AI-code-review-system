@@ -51,6 +51,12 @@ async function updateProjectContext(id, projectContext) {
 }
 
 async function deleteById(id) {
+  // First delete all reviews belonging to this repository (findings will cascade delete via FK)
+  await pool.execute(
+    `DELETE FROM reviews WHERE repository_id = ?`,
+    [id]
+  );
+
   const [result] = await pool.execute(
     `DELETE FROM repositories WHERE id = ?`,
     [id]

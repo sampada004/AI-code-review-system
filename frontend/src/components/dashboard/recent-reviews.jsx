@@ -52,58 +52,71 @@ export default function RecentReviews() {
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState("all");
 
-  useEffect(() => {
-    let mounted = true;
+  const fetchData = async () => {
+    try {
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+      const { apiUrl } = await import("@/lib/api");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-    async function fetchData() {
-      try {
-        const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
-        const { apiUrl } = await import("@/lib/api");
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const [reviewsRes, reposRes] = await Promise.all([
+        fetch(apiUrl(`/reviews`), { headers }),
+        fetch(apiUrl(`/repositories`), { headers })
+      ]);
 
-        const [reviewsRes, reposRes] = await Promise.all([
-          fetch(apiUrl(`/reviews`), { headers }),
-          fetch(apiUrl(`/repositories`), { headers })
-        ]);
+      let reviewsData = [];
+      let reposMap = {};
 
-        let reviewsData = [];
-        let reposMap = {};
-
-        if (reviewsRes.ok) {
-          const data = await reviewsRes.json();
-          if (data && data.reviews) reviewsData = data.reviews;
-        }
-
-        if (reposRes.ok) {
-          const data = await reposRes.json();
-          if (data && data.repositories) {
-            data.repositories.forEach(repo => {
-              reposMap[repo.id] = repo;
-            });
-          }
-        }
-
-        if (mounted) {
-          setReviews(reviewsData);
-          setRepositories(reposMap);
-        }
-      } catch (err) {
-        // ignore
-      } finally {
-        if (mounted) setLoading(false);
+      if (reviewsRes.ok) {
+        const data = await reviewsRes.json();
+        if (data && data.reviews) reviewsData = data.reviews;
       }
-    }
 
+      if (reposRes.ok) {
+        const data = await reposRes.json();
+        if (data && data.repositories) {
+          data.repositories.forEach(repo => {
+            reposMap[repo.id] = repo;
+          });
+        }
+      }
+
+      setReviews(reviewsData);
+      setRepositories(reposMap);
+    } catch (err) {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
 
+    function onDataChanged() {
+      fetchData();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("repositories:changed", onDataChanged);
+      window.addEventListener("reviews:changed", onDataChanged);
+    }
+
     return () => {
-      mounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("repositories:changed", onDataChanged);
+        window.removeEventListener("reviews:changed", onDataChanged);
+      }
     };
   }, []);
 
   // Filter ONLY files that need attention (exclude PR_CREATED, CLEAN, and resolved items)
   const latestFilesMap = new Map();
   reviews.forEach((r) => {
+    // If review belongs to a repository that is no longer connected, exclude it
+    if (r.repository_id && !repositories[r.repository_id]) {
+      return;
+    }
+
     const sev = (r.overall_severity || "").toLowerCase();
     const status = (r.review_status || "").toUpperCase();
     
