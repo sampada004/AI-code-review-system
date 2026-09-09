@@ -9,6 +9,8 @@ import {
   ReviewIcon,
 } from "./dashboard-icons";
 import { FolderPlus, User, LogOut } from "lucide-react";
+import GitHubIcon from "@/components/common/github-icon";
+import UserProfileModal from "./user-profile-modal";
 import { sidebarNav } from "./dashboard-data";
 import { apiUrl } from "@/lib/api";
 
@@ -28,17 +30,25 @@ export function DashboardSidebar({
 }) {
   const [reviewsHref, setReviewsHref] = useState("/reviews");
   const [userProfile, setUserProfile] = useState(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async (e) => {
     e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+
     try {
       const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("auth_token");
+        window.localStorage.removeItem("inspectra.lastRepo");
+        window.localStorage.removeItem("codepilot.lastRepo");
         window.sessionStorage.clear();
       }
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const timeoutId = setTimeout(() => controller.abort(), 1800);
       await fetch(apiUrl("/auth/logout"), {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -82,96 +92,131 @@ export function DashboardSidebar({
       .catch(() => {});
   }, []);
 
-  const displayName = userProfile?.name || userProfile?.github_username || userProfile?.email?.split("@")[0] || "Developer";
-  const displayRole = userProfile?.github_username ? `@${userProfile.github_username}` : "Code Reviewer";
-  const avatarUrl = userProfile?.avatar_url;
+  const githubAccount = userProfile?.github_account || (userProfile?.github_username ? {
+    username: userProfile.github_username,
+    avatar_url: userProfile.avatar_url,
+  } : null);
+
+  const displayName = userProfile?.full_name || userProfile?.name || githubAccount?.username || userProfile?.email?.split("@")[0] || "Developer";
+  const avatarUrl = githubAccount?.avatar_url || userProfile?.avatar_url;
 
   return (
-    <aside
-      className={`fixed inset-y-0 left-0 z-40 border-r border-white/10 bg-[#0b0f17] text-slate-200 transition-all duration-300 ease-out ${
-        !collapsed || mobileOpen ? "translate-x-0 w-[240px]" : "translate-x-0 w-[70px]"
-      } hidden lg:flex flex-col`}
-      style={{ width: collapsed && !mobileOpen ? "70px" : "240px" }}
-      data-mobile-open={mobileOpen ? "true" : "false"}
-    >
-      <div className="flex h-full flex-col">
-        {/* Brand Header */}
-        <div className="border-b border-white/10 px-4 py-4">
-          <Link href="/dashboard" className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
-            <LogoMark />
-            {!collapsed ? (
-              <div className="min-w-0">
-                <div className="text-[16px] font-bold tracking-tight text-white flex items-center gap-1.5">
-                  <span>Inspectra</span>
-                  <span className="rounded bg-sky-500/20 text-sky-400 px-1.5 py-0.2 text-[10px] font-semibold">AI</span>
+    <>
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 border-r border-white/10 bg-[#0b0f17] text-slate-200 transition-all duration-300 ease-out ${
+          !collapsed || mobileOpen ? "translate-x-0 w-[240px]" : "translate-x-0 w-[70px]"
+        } hidden lg:flex flex-col`}
+        style={{ width: collapsed && !mobileOpen ? "70px" : "240px" }}
+        data-mobile-open={mobileOpen ? "true" : "false"}
+      >
+        <div className="flex h-full flex-col">
+          {/* Brand Header */}
+          <div className="border-b border-white/10 px-4 py-4">
+            <Link href="/dashboard" className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
+              <LogoMark />
+              {!collapsed ? (
+                <div className="min-w-0">
+                  <div className="text-[16px] font-bold tracking-tight text-white flex items-center gap-1.5">
+                    <span>Inspectra</span>
+                    <span className="rounded bg-sky-500/20 text-sky-400 px-1.5 py-0.2 text-[10px] font-semibold">AI</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate">Autonomous Code Review</div>
                 </div>
-                <div className="text-[11px] text-slate-400 truncate">Autonomous Code Review</div>
-              </div>
-            ) : null}
-          </Link>
-        </div>
+              ) : null}
+            </Link>
+          </div>
 
-        {/* Main Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {sidebarNav.map((item) => {
-            const Icon = iconMap[item.icon] || GridIcon;
-            const isActive = item.label === activeItem;
-            const href = workspaceMode && item.label === "Reviews" ? "#" : (item.label === "Reviews" ? reviewsHref : item.href);
-            
-            return (
-              <Link
-                key={item.label}
-                href={href}
-                onClick={workspaceMode && item.label === "Reviews" && onToggleExplorer ? (e) => { e.preventDefault(); onToggleExplorer(); } : undefined}
-                className={`flex items-center rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150 ${
-                  isActive
-                    ? "bg-sky-500/15 text-sky-300 border border-sky-500/25 shadow-sm"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
-                }`}
-                title={collapsed ? item.label : undefined}
-              >
-                <span className={`flex items-center ${collapsed ? "w-full justify-center" : "gap-3"}`}>
-                  <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-sky-400" : "text-slate-400"}`} />
-                  {!collapsed ? <span>{item.label}</span> : null}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User Profile Card */}
-        <div className="border-t border-white/10 p-3">
-          <div className={`flex items-center rounded-xl bg-white/[0.03] border border-white/5 p-2.5 ${collapsed ? "justify-center" : "gap-3"}`}>
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={displayName}
-                className="h-8 w-8 rounded-full border border-sky-400/30 object-cover shrink-0"
-              />
-            ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-sky-400/30 bg-sky-950 text-sky-300">
-                <User className="h-4 w-4" />
-              </div>
-            )}
-            {!collapsed ? (
-              <>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-semibold text-slate-200">{displayName}</div>
-                  <div className="truncate text-[11px] text-slate-500 font-mono">{displayRole}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  title="Logout"
-                  className="rounded-lg p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0"
+          {/* Main Navigation */}
+          <nav className="flex-1 px-3 py-4 space-y-1">
+            {sidebarNav.map((item) => {
+              const Icon = iconMap[item.icon] || GridIcon;
+              const isActive = item.label === activeItem;
+              const href = workspaceMode && item.label === "Reviews" ? "#" : (item.label === "Reviews" ? reviewsHref : item.href);
+              
+              return (
+                <Link
+                  key={item.label}
+                  href={href}
+                  onClick={workspaceMode && item.label === "Reviews" && onToggleExplorer ? (e) => { e.preventDefault(); onToggleExplorer(); } : undefined}
+                  className={`flex items-center rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150 ${
+                    isActive
+                      ? "bg-sky-500/15 text-sky-300 border border-sky-500/25 shadow-sm"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white border border-transparent"
+                  }`}
+                  title={collapsed ? item.label : undefined}
                 >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </>
-            ) : null}
+                  <span className={`flex items-center ${collapsed ? "w-full justify-center" : "gap-3"}`}>
+                    <Icon className={`h-4 w-4 shrink-0 ${isActive ? "text-sky-400" : "text-slate-400"}`} />
+                    {!collapsed ? <span>{item.label}</span> : null}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* User Profile Card */}
+          <div className="border-t border-white/10 p-3">
+            <div 
+              onClick={() => setIsProfileModalOpen(true)}
+              className={`group flex items-center rounded-xl bg-white/[0.03] border border-white/5 p-2.5 hover:bg-white/[0.07] hover:border-white/10 transition cursor-pointer ${collapsed ? "justify-center" : "gap-3"}`}
+              title="Click to view profile & GitHub integration"
+            >
+              <div className="relative shrink-0">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={displayName}
+                    className="h-8 w-8 rounded-full border border-sky-400/30 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-sky-400/30 bg-sky-950 text-sky-300">
+                    <User className="h-4 w-4" />
+                  </div>
+                )}
+                {githubAccount && (
+                  <div className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#161b22] border border-white/20 text-white shadow-sm">
+                    <GitHubIcon className="h-2 w-2" />
+                  </div>
+                )}
+              </div>
+
+              {!collapsed ? (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold text-slate-200 group-hover:text-white transition">{displayName}</div>
+                    {githubAccount ? (
+                      <div className="flex items-center gap-1 truncate text-[11px] text-sky-300 font-mono">
+                        <GitHubIcon className="h-2.5 w-2.5 shrink-0 text-sky-400" />
+                        <span className="truncate">@{githubAccount.username}</span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 ml-0.5" title="GitHub Integrated" />
+                      </div>
+                    ) : (
+                      <div className="truncate text-[11px] text-slate-500 font-mono">No GitHub linked</div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    title="Sign Out & Remove Account from Inspectra"
+                    className="rounded-lg p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 border border-transparent transition shrink-0 disabled:opacity-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        userProfile={userProfile}
+        onProfileUpdate={(updated) => setUserProfile(updated)}
+      />
+    </>
   );
 }

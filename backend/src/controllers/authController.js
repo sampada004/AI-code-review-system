@@ -1,5 +1,9 @@
 const authService = require("../services/authService");
 const userModel = require("../models/userModel");
+const githubAccountModel = require("../models/githubAccountModel");
+const encryption = require("../utils/encryption");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 
 const sendAuthResponse = (res, statusCode, message, data) => {
   res.status(statusCode).json({
@@ -54,8 +58,23 @@ async function me(req, res, next) {
       });
     }
 
+    const githubAccount = await githubAccountModel.findByUserId(req.user.id);
+
     sendAuthResponse(res, 200, "Profile loaded", {
-      user,
+      user: {
+        ...user,
+        github_account: githubAccount
+          ? {
+              id: githubAccount.id,
+              github_id: githubAccount.github_id,
+              username: githubAccount.username || githubAccount.github_username,
+              avatar_url: githubAccount.avatar_url || githubAccount.github_avatar_url,
+              created_at: githubAccount.created_at,
+            }
+          : null,
+        github_username: githubAccount ? (githubAccount.username || githubAccount.github_username) : null,
+        avatar_url: githubAccount ? (githubAccount.avatar_url || githubAccount.github_avatar_url) : null,
+      },
     });
   } catch (error) {
     next(error);
@@ -64,19 +83,39 @@ async function me(req, res, next) {
 
 async function logout(req, res, next) {
   try {
-    const token = req.cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    if (token) {
+    let token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    if (!token && req.headers.cookie) {
+      const cookies = req.headers.cookie.split(";").map((c) => c.trim());
+      const authCookie = cookies.find((c) => c.startsWith("auth_token="));
+      if (authCookie) {
+        token = authCookie.split("=")[1];
+      }
+    }
+    if (!token && req.cookies?.auth_token) {
+      token = req.cookies.auth_token;
+    }
+
+    let userId = req.user?.id;
+
+    if (!userId && token) {
       try {
-        const jwt = require("jsonwebtoken");
         const decoded = jwt.verify(token, process.env.JWT_SECRET || "inspectra-jwt-secret");
         if (decoded && decoded.id) {
-          await githubAccountModel.deleteByUserId(decoded.id);
+          userId = decoded.id;
         }
       } catch (e) {
-        // Token expired/invalid, proceed
+        try {
+          const decoded = jwt.decode(token);
+          if (decoded && decoded.id) {
+            userId = decoded.id;
+          }
+        } catch (err) {}
       }
-    } else if (req.user?.id) {
-      await githubAccountModel.deleteByUserId(req.user.id);
+    }
+
+    if (userId) {
+      await githubAccountModel.deleteByUserId(userId);
+      console.log(`[auth] Disconnected and deleted GitHub account for user ${userId} upon sign out`);
     }
 
     res.clearCookie("auth_token", {
@@ -89,16 +128,33 @@ async function logout(req, res, next) {
 
     res.status(200).json({
       success: true,
-      message: "Logged out and GitHub account disconnected successfully",
+      message: "Signed out and GitHub account removed from Inspectra successfully",
     });
   } catch (error) {
     next(error);
   }
 }
 
-const crypto = require("crypto");
-const githubAccountModel = require("../models/githubAccountModel");
-const encryption = require("../utils/encryption");
+async function disconnectGithub(req, res, next) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    await githubAccountModel.deleteByUserId(req.user.id);
+    console.log(`[auth] Disconnected GitHub account for user ${req.user.id}`);
+
+    res.status(200).json({
+      success: true,
+      message: "GitHub account removed from Inspectra successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 async function githubLogin(req, res, next) {
   try {
@@ -266,4 +322,5 @@ module.exports = {
   register,
   githubLogin,
   githubCallback,
+  disconnectGithub,
 };

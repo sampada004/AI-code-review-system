@@ -11,5 +11,6 @@ router.get("/me", authMiddleware, authController.me);
 
 router.get("/github/login", authController.githubLogin);
 router.get("/github/callback", authController.githubCallback);
+router.post("/github/disconnect", authMiddleware, authController.disconnectGithub);
 
 module.exports = router;
