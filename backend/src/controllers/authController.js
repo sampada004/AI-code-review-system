@@ -81,6 +81,60 @@ async function me(req, res, next) {
   }
 }
 
+async function revokeGitHubGrant(userId) {
+  try {
+    const account = await githubAccountModel.findByUserId(userId);
+    if (!account) return;
+
+    const encryptedToken = account.encrypted_access_token || account.access_token;
+    if (!encryptedToken) return;
+
+    let rawToken = null;
+    try {
+      rawToken = encryption.decryptToken(encryptedToken);
+    } catch (e) {
+      rawToken = encryptedToken;
+    }
+
+    const clientId = process.env.GITHUB_CLIENT_ID || "Ov23liJYJqQciQXHOTs0";
+    const clientSecret = process.env.GITHUB_CLIENT_SECRET || "37a27ba9dfaa3fd7073302a39094569075824567";
+
+    if (rawToken && clientId && clientSecret) {
+      const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+      
+      // Revoke the grant on GitHub so application authorization is revoked
+      await fetch(`https://api.github.com/applications/${clientId}/grant`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "Inspectra-AI",
+        },
+        body: JSON.stringify({ access_token: rawToken }),
+      }).catch((err) => {
+        console.warn("[auth] GitHub grant revocation warning:", err.message);
+      });
+
+      // Also revoke token
+      await fetch(`https://api.github.com/applications/${clientId}/token`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "Inspectra-AI",
+        },
+        body: JSON.stringify({ access_token: rawToken }),
+      }).catch(() => {});
+
+      console.log(`[auth] Revoked GitHub OAuth token and grant for user ${userId}`);
+    }
+  } catch (error) {
+    console.warn("[auth] Error in revokeGitHubGrant:", error.message);
+  }
+}
+
 async function logout(req, res, next) {
   try {
     let token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
@@ -114,6 +168,7 @@ async function logout(req, res, next) {
     }
 
     if (userId) {
+      await revokeGitHubGrant(userId);
       await githubAccountModel.deleteByUserId(userId);
       console.log(`[auth] Disconnected and deleted GitHub account for user ${userId} upon sign out`);
     }
@@ -128,7 +183,7 @@ async function logout(req, res, next) {
 
     res.status(200).json({
       success: true,
-      message: "Signed out and GitHub account removed from Inspectra successfully",
+      message: "Signed out and GitHub account disconnected from Inspectra successfully",
     });
   } catch (error) {
     next(error);
@@ -144,12 +199,13 @@ async function disconnectGithub(req, res, next) {
       });
     }
 
+    await revokeGitHubGrant(req.user.id);
     await githubAccountModel.deleteByUserId(req.user.id);
-    console.log(`[auth] Disconnected GitHub account for user ${req.user.id}`);
+    console.log(`[auth] Disconnected and revoked GitHub account for user ${req.user.id}`);
 
     res.status(200).json({
       success: true,
-      message: "GitHub account removed from Inspectra successfully",
+      message: "GitHub account removed from Inspectra and access revoked successfully",
     });
   } catch (error) {
     next(error);
@@ -167,13 +223,10 @@ async function githubLogin(req, res, next) {
       path: "/",
     });
 
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI;
-    if (!clientId || !redirectUri) {
-      throw new Error("GitHub OAuth is not configured properly");
-    }
+    const clientId = process.env.GITHUB_CLIENT_ID || "Ov23liJYJqQciQXHOTs0";
+    const redirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI || "https://inspectra-backend-fktg.onrender.com/api/auth/github/callback";
 
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user user:email repo&state=${state}`;
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user user:email repo&state=${state}&prompt=consent`;
     res.redirect(githubAuthUrl);
   } catch (error) {
     next(error);

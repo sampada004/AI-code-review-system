@@ -40,28 +40,29 @@ export default function UserProfileModal({ isOpen, onClose, userProfile, onProfi
 
     try {
       const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("auth_token");
-        window.localStorage.removeItem("inspectra.lastRepo");
-        window.localStorage.removeItem("codepilot.lastRepo");
-        window.sessionStorage.clear();
-      }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1800);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       await fetch(apiUrl("/auth/logout"), {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         credentials: "include",
         signal: controller.signal,
-      }).catch(() => {});
+      }).catch((err) => console.warn("Logout request:", err));
 
       clearTimeout(timeoutId);
     } catch (e) {
       console.error("Sign out error:", e);
     } finally {
       if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.localStorage.removeItem("inspectra.lastRepo");
+        window.localStorage.removeItem("codepilot.lastRepo");
+        window.sessionStorage.clear();
         window.location.href = "/login";
       }
     }

@@ -38,20 +38,15 @@ export function DashboardTopbar({
 
     try {
       const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("auth_token");
-        window.localStorage.removeItem("inspectra.lastRepo");
-        window.localStorage.removeItem("codepilot.lastRepo");
-        window.sessionStorage.clear();
-      }
-
-      // Best-effort backend call with 1.8s timeout so user is never blocked
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1800);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
 
       await fetch(apiUrl("/auth/logout"), {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         credentials: "include",
         signal: controller.signal,
       }).catch(() => {});
@@ -61,6 +56,10 @@ export function DashboardTopbar({
       console.error("Logout error:", e);
     } finally {
       if (typeof window !== "undefined") {
+        window.localStorage.removeItem("auth_token");
+        window.localStorage.removeItem("inspectra.lastRepo");
+        window.localStorage.removeItem("codepilot.lastRepo");
+        window.sessionStorage.clear();
         window.location.href = "/login";
       } else {
         router.replace("/login");
