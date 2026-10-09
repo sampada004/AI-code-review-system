@@ -315,6 +315,106 @@ function sanitizeAndValidateFindings(findings, sourceCode, fileName) {
   return validFindings;
 }
 
+/**
+ * Resilient JSON extraction and parsing that handles thinking tokens,
+ * conversational preambles, markdown fences, and unescaped characters.
+ */
+function extractAndParseJSON(rawContent) {
+  if (!rawContent || typeof rawContent !== "string") {
+    throw new Error("AI returned empty content");
+  }
+
+  const str = rawContent.trim();
+
+  // 1. Direct parse
+  try {
+    return JSON.parse(str);
+  } catch (e) {}
+
+  // 2. Fenced code blocks: ```json { ... } ``` or ``` { ... } ```
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  let match;
+  while ((match = codeBlockRegex.exec(str)) !== null) {
+    const block = match[1].trim();
+    const firstB = block.indexOf('{');
+    const lastB = block.lastIndexOf('}');
+    if (firstB !== -1 && lastB > firstB) {
+      try {
+        return JSON.parse(block.substring(firstB, lastB + 1));
+      } catch (e) {
+        try {
+          const sanitized = block.substring(firstB, lastB + 1)
+            .replace(/,\s*([}\]])/g, '$1')
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) => {
+              if (c === '\n') return '\\n';
+              if (c === '\r') return '\\r';
+              if (c === '\t') return '\\t';
+              return '';
+            });
+          return JSON.parse(sanitized);
+        } catch (e2) {}
+      }
+    }
+  }
+
+  // 3. Scan for JSON object containing known keys: "summary" or "findings"
+  const schemaRegex = /\{\s*"(?:summary|findings|overallSeverity)"[\s\S]*\}/;
+  const schemaMatch = str.match(schemaRegex);
+  if (schemaMatch) {
+    const candidate = schemaMatch[0];
+    const lastB = candidate.lastIndexOf('}');
+    if (lastB !== -1) {
+      const candidateStr = candidate.substring(0, lastB + 1);
+      try {
+        return JSON.parse(candidateStr);
+      } catch (e) {
+        try {
+          const sanitized = candidateStr
+            .replace(/,\s*([}\]])/g, '$1')
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) => {
+              if (c === '\n') return '\\n';
+              if (c === '\r') return '\\r';
+              if (c === '\t') return '\\t';
+              return '';
+            });
+          return JSON.parse(sanitized);
+        } catch (e2) {}
+      }
+    }
+  }
+
+  // 4. Search backwards through all '{' occurrences to find the outermost valid JSON object
+  const braceIndices = [];
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '{') braceIndices.push(i);
+  }
+
+  for (let i = braceIndices.length - 1; i >= 0; i--) {
+    const startIdx = braceIndices[i];
+    const lastIdx = str.lastIndexOf('}');
+    if (lastIdx > startIdx) {
+      const sub = str.substring(startIdx, lastIdx + 1);
+      try {
+        return JSON.parse(sub);
+      } catch (e) {
+        try {
+          const sanitized = sub
+            .replace(/,\s*([}\]])/g, '$1')
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) => {
+              if (c === '\n') return '\\n';
+              if (c === '\r') return '\\r';
+              if (c === '\t') return '\\t';
+              return '';
+            });
+          return JSON.parse(sanitized);
+        } catch (e2) {}
+      }
+    }
+  }
+
+  throw new Error("Could not extract a valid JSON object from model response.");
+}
+
 async function analyzeCode(sourceCode, fileName, isRevalidation = false, previousFindings = null, projectContext = null) {
   const rawKey = process.env.OPENROUTER_API_KEY || "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";
   const apiKey = String(rawKey).split(/[\r\n]+/)[0].trim().replace(/^Bearer\s+/i, "");
@@ -386,11 +486,14 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
   const userPrompt = `File: ${fileName}\n\nCode:\n\`\`\`\n${sourceCode}\n\`\`\``;
 
   const fallbackModels = [
-    "minimax/minimax-m3:free",
-    "minimax/minimax-m2.7:free",
-    "poolside/laguna-s-2.1:free",
-    "inclusionai/ling-3.0-flash-fin:free",
-    "cohere/north-mini-code:free"
+    "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "openrouter/free",
+    "google/gemma-4-31b-it:free",
+    "cohere/north-mini-code:free",
+    "thinkingmachines/inkling-small:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "poolside/laguna-s-2.1:free"
   ];
 
   let lastError = null;
@@ -408,7 +511,8 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
         body: JSON.stringify({
           model: modelId,
           max_tokens: 4000,
-          temperature: 0.1, // Low temperature for high deterministic accuracy
+          temperature: 0.1,
+          response_format: { type: "json_object" },
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
@@ -438,30 +542,27 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
       }
       
       try {
-        if (!rawContent || rawContent.trim() === "") {
-          throw new Error("AI returned empty content");
-        }
-        
-        let content = rawContent;
-        // Robust JSON extraction: find the first { and the last }
-        const firstBrace = content.indexOf('{');
-        const lastBrace = content.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          content = content.substring(firstBrace, lastBrace + 1);
-        }
-        
-        const parsed = JSON.parse(content.trim());
+        const parsed = extractAndParseJSON(rawContent);
         
         // Sanitize and validate findings against syntax regressions / hallucinations
         if (parsed.findings && Array.isArray(parsed.findings)) {
           parsed.findings = sanitizeAndValidateFindings(parsed.findings, sourceCode, fileName);
+        } else {
+          parsed.findings = [];
+        }
+        
+        if (!parsed.summary) {
+          parsed.summary = parsed.findings.length > 0 ? "Potential issues detected." : "No critical issues found.";
+        }
+        if (!parsed.overallSeverity) {
+          parsed.overallSeverity = parsed.findings.length > 0 ? "medium" : "none";
         }
         
         // Success! We found a working model and parsed & validated the response.
         return parsed;
       } catch (e) {
-        console.error(`[${modelId}] Failed to parse/validate JSON response:`, rawContent?.substring ? rawContent.substring(0, 200) : rawContent);
-        lastError = new Error("Failed to parse structured response from AI.");
+        console.error(`[${modelId}] Failed to parse/validate JSON response:`, rawContent?.substring ? rawContent.substring(0, 300) : rawContent);
+        lastError = new Error("Failed to parse structured response from AI: " + e.message);
         continue; // Try next model
       }
     } catch (err) {
