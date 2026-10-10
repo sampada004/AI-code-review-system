@@ -557,20 +557,23 @@ async function queryGeminiModel(apiKey, systemPrompt, userPrompt, sourceCode, fi
   }
 }
 
-async function queryGroqModel(apiKey, systemPrompt, userPrompt, sourceCode, fileName, timeoutMs = 4500) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+async function queryGroqModel(apiKey, systemPrompt, userPrompt, sourceCode, fileName, timeoutMs = 4000) {
+  const groqModels = [
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-20b"
+  ];
 
-  try {
+  async function querySingleGroq(modelId, signal) {
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      signal: controller.signal,
+      signal,
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: modelId,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
@@ -580,11 +583,9 @@ async function queryGroqModel(apiKey, systemPrompt, userPrompt, sourceCode, file
       })
     });
 
-    clearTimeout(timer);
-
     if (!response.ok) {
       const err = await response.text();
-      throw new Error(`[Groq] API Error ${response.status}: ${err.substring(0, 100)}`);
+      throw new Error(`[Groq ${modelId}] Error ${response.status}: ${err.substring(0, 80)}`);
     }
 
     const data = await response.json();
@@ -605,8 +606,20 @@ async function queryGroqModel(apiKey, systemPrompt, userPrompt, sourceCode, file
     }
 
     return parsed;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const promises = groqModels.map(m => querySingleGroq(m, controller.signal));
+    const winner = await Promise.any(promises);
+    clearTimeout(timer);
+    controller.abort();
+    return winner;
   } catch (err) {
     clearTimeout(timer);
+    controller.abort();
     throw err;
   }
 }
