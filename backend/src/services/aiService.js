@@ -415,6 +415,80 @@ function extractAndParseJSON(rawContent) {
   throw new Error("Could not extract a valid JSON object from model response.");
 }
 
+async function querySingleModel(modelId, apiKey, systemPrompt, userPrompt, sourceCode, fileName, timeoutMs = 8000, externalSignal = null) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Link external signal if provided
+  if (externalSignal) {
+    externalSignal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      controller.abort();
+    });
+  }
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.FRONTEND_URL || "https://inspectra-frontend-sigma.vercel.app",
+        "X-Title": "Inspectra AI"
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: 2000,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
+      })
+    });
+
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`[${modelId}] API Error ${response.status}: ${errText.substring(0, 150)}`);
+    }
+
+    const data = await response.json();
+    if (!data.choices || !data.choices[0]) {
+      throw new Error(`[${modelId}] Unexpected response format.`);
+    }
+
+    const msg = data.choices[0].message;
+    let rawContent = msg?.content || msg?.reasoning || data.choices[0].text || "";
+    if (typeof rawContent !== "string") {
+      rawContent = JSON.stringify(rawContent);
+    }
+
+    const parsed = extractAndParseJSON(rawContent);
+
+    if (parsed.findings && Array.isArray(parsed.findings)) {
+      parsed.findings = sanitizeAndValidateFindings(parsed.findings, sourceCode, fileName);
+    } else {
+      parsed.findings = [];
+    }
+
+    if (!parsed.summary) {
+      parsed.summary = parsed.findings.length > 0 ? "Potential issues detected." : "No critical issues found.";
+    }
+    if (!parsed.overallSeverity) {
+      parsed.overallSeverity = parsed.findings.length > 0 ? "medium" : "none";
+    }
+
+    return parsed;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 async function analyzeCode(sourceCode, fileName, isRevalidation = false, previousFindings = null, projectContext = null) {
   const rawKey = process.env.OPENROUTER_API_KEY || "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";
   const apiKey = String(rawKey).split(/[\r\n]+/)[0].trim().replace(/^Bearer\s+/i, "");
@@ -485,94 +559,51 @@ SURGICAL ZERO-REGRESSION & INTEGRITY MANDATE:
 
   const userPrompt = `File: ${fileName}\n\nCode:\n\`\`\`\n${sourceCode}\n\`\`\``;
 
-  const fallbackModels = [
-    "google/gemma-4-26b-a4b-it:free",
-    "nvidia/nemotron-3.5-lightning:free",
+  // Primary fast tier raced in parallel (fastest first response wins)
+  const tier1Models = [
     "openrouter/free",
+    "google/gemma-4-26b-a4b-it:free",
+    "nvidia/nemotron-3.5-lightning:free"
+  ];
+
+  // Secondary fallback tier
+  const tier2Models = [
     "google/gemma-4-31b-it:free",
     "cohere/north-mini-code:free",
-    "thinkingmachines/inkling-small:free",
     "liquid/lfm-2.5-2.6b:free",
     "poolside/laguna-s-2.1:free"
   ];
 
-  let lastError = null;
-
-  for (const modelId of fallbackModels) {
+  // Helper to race a tier of models
+  async function raceTier(models, timeoutMs = 7000) {
+    const tierController = new AbortController();
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.FRONTEND_URL || "https://inspectra-frontend-sigma.vercel.app",
-          "X-Title": "Inspectra AI"
-        },
-        body: JSON.stringify({
-          model: modelId,
-          max_tokens: 4000,
-          temperature: 0.1,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ]
-        })
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error(`[${modelId}] API Error:`, text);
-        lastError = new Error(`AI API failed with status: ${response.status}`);
-        continue; // Try next model
-      }
-
-      const data = await response.json();
-      
-      if (!data.choices || !data.choices[0]) {
-        console.error(`[${modelId}] returned unexpected data format:`, data);
-        lastError = new Error(data.error?.message || "Unexpected response format from AI provider.");
-        continue; // Try next model
-      }
-      
-      const msg = data.choices[0].message;
-      let rawContent = msg?.content || msg?.reasoning || data.choices[0].text || "";
-      if (typeof rawContent !== "string") {
-        rawContent = JSON.stringify(rawContent);
-      }
-      
-      try {
-        const parsed = extractAndParseJSON(rawContent);
-        
-        // Sanitize and validate findings against syntax regressions / hallucinations
-        if (parsed.findings && Array.isArray(parsed.findings)) {
-          parsed.findings = sanitizeAndValidateFindings(parsed.findings, sourceCode, fileName);
-        } else {
-          parsed.findings = [];
-        }
-        
-        if (!parsed.summary) {
-          parsed.summary = parsed.findings.length > 0 ? "Potential issues detected." : "No critical issues found.";
-        }
-        if (!parsed.overallSeverity) {
-          parsed.overallSeverity = parsed.findings.length > 0 ? "medium" : "none";
-        }
-        
-        // Success! We found a working model and parsed & validated the response.
-        return parsed;
-      } catch (e) {
-        console.error(`[${modelId}] Failed to parse/validate JSON response:`, rawContent?.substring ? rawContent.substring(0, 300) : rawContent);
-        lastError = new Error("Failed to parse structured response from AI: " + e.message);
-        continue; // Try next model
-      }
+      const promises = models.map(modelId =>
+        querySingleModel(modelId, apiKey, systemPrompt, userPrompt, sourceCode, fileName, timeoutMs, tierController.signal)
+      );
+      const winner = await Promise.any(promises);
+      tierController.abort(); // Cancel the other parallel requests immediately
+      return winner;
     } catch (err) {
-      console.error(`[${modelId}] Network/Execution Error:`, err.message);
-      lastError = err;
+      tierController.abort();
+      throw err;
     }
   }
 
-  // If we exhaust all models in the fallback array, throw the final error
-  throw new Error("AI Code Review failed after trying all fallback models: " + (lastError?.message || "Unknown error"));
+  // Attempt Tier 1 Race
+  try {
+    return await raceTier(tier1Models, 7000);
+  } catch (tier1Err) {
+    console.warn("Tier 1 fast models failed/rate-limited, falling back to Tier 2...", tier1Err?.errors || tier1Err?.message);
+  }
+
+  // Attempt Tier 2 Race
+  try {
+    return await raceTier(tier2Models, 10000);
+  } catch (tier2Err) {
+    console.error("Tier 2 models also failed:", tier2Err?.errors || tier2Err?.message);
+    throw new Error("AI Code Review failed after trying all fallback models. Please try again shortly.");
+  }
 }
 
 module.exports = {
